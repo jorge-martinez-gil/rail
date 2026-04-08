@@ -1,0 +1,2355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAIL Console</title>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg: #f6f8fc;
+      --panel: rgba(255,255,255,.92);
+      --text: #0f172a;
+      --muted: #5b6476;
+      --border: rgba(15,23,42,.10);
+
+      --accent: #2563eb;
+      --accent2: #60a5fa;
+
+      --okBg: rgba(34,197,94,.10);
+      --okBd: rgba(34,197,94,.45);
+      --badBg: rgba(239,68,68,.10);
+      --badBd: rgba(239,68,68,.45);
+
+      --chipBg: rgba(15,23,42,.04);
+      --shadow: 0 18px 44px rgba(15,23,42,.10);
+      --shadow2: 0 10px 26px rgba(15,23,42,.08);
+
+      --selectOptionText: #0f172a;
+      --selectOptionBg: #ffffff;
+
+      --focusRing: rgba(37,99,235,.22);
+    }
+
+    *{ box-sizing: border-box; }
+    html, body{ height: 100%; }
+
+    body{
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(1200px 820px at 10% -10%, rgba(37,99,235,.14), transparent 55%),
+        radial-gradient(980px 700px at 92% 0%, rgba(96,165,250,.18), transparent 56%),
+        radial-gradient(900px 700px at 60% 110%, rgba(37,99,235,.07), transparent 55%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    body::before{
+      content:"";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(to right, rgba(15,23,42,.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(15,23,42,.035) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at 50% 20%, rgba(0,0,0,.7), rgba(0,0,0,0));
+      opacity: .8;
+    }
+
+    .shell{
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      min-height: 100vh;
+      position: relative;
+      z-index: 1;
+    }
+
+    .sidebar{
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.72));
+      padding: 18px 16px 24px 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      backdrop-filter: blur(14px);
+    }
+
+    .main{
+      padding: 18px 18px 24px 18px;
+    }
+
+    .brand{
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 12px 14px 12px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,255,255,.70));
+      box-shadow: var(--shadow2);
+      margin-bottom: 14px;
+    }
+    .brandMark{
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 14px 34px rgba(37,99,235,.24);
+      position: relative;
+      overflow: hidden;
+    }
+    .brandMark::after{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.55), transparent 45%);
+      transform: rotate(20deg);
+      opacity: .7;
+    }
+    .brandTitle{
+      display: flex;
+      flex-direction: column;
+      line-height: 1.08;
+    }
+    .brandTitle b{ font-size: 14px; font-weight: 700; letter-spacing: .01em; }
+    .brandTitle span{ font-size: 12px; color: var(--muted); }
+
+    .sideCard{
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow2);
+    }
+    .sideCard h4{
+      margin: 0 0 10px 0;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .grid2{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .field label{
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .field input, .field select,
+    select, .txt, .target-input, .mini{
+      width: 100%;
+      padding: 10px 11px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.95);
+      border: 1px solid rgba(15,23,42,.12);
+      color: var(--text);
+      outline: none;
+      font-size: 13px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.7) inset;
+    }
+
+    .field input:focus, .field select:focus,
+    select:focus, .txt:focus, .target-input:focus, .mini:focus{
+      border-color: rgba(37,99,235,.55);
+      box-shadow: 0 0 0 3px var(--focusRing);
+    }
+
+    .hint{
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.38;
+    }
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      color: rgba(15,23,42,.78);
+      background: rgba(15,23,42,.03);
+      border: 1px solid rgba(15,23,42,.08);
+      padding: 10px 10px;
+      border-radius: 14px;
+      margin-top: 10px;
+    }
+
+    .btn{
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(15,23,42,.12);
+      background: rgba(255,255,255,.92);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+      transition: transform .12s ease, box-shadow .12s ease, background .12s ease, border .12s ease;
+      box-shadow: 0 1px 0 rgba(255,255,255,.7) inset;
+    }
+    .btn:hover{
+      transform: translateY(-1px);
+      background: rgba(255,255,255,1);
+      box-shadow: 0 10px 22px rgba(15,23,42,.10);
+      border-color: rgba(15,23,42,.16);
+    }
+    .btn:active{ transform: translateY(0px); }
+    .btn:disabled{ opacity: .50; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(37,99,235,.98), rgba(96,165,250,.98));
+      border-color: rgba(37,99,235,.25);
+      color: white;
+      box-shadow: 0 14px 32px rgba(37,99,235,.20);
+    }
+    .btn.primary:hover{
+      box-shadow: 0 18px 44px rgba(37,99,235,.26);
+    }
+    .btn.ghost{
+      background: rgba(255,255,255,.70);
+    }
+
+    .topbar{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .statusLine{
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .statusLine b{ font-size: 14px; font-weight: 800; }
+    .statusLine span{ font-size: 12px; color: var(--muted); }
+
+    .chips{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content:flex-end;
+      align-items:center;
+    }
+    .chip{
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--chipBg);
+      border: 1px solid rgba(15,23,42,.08);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .kpis{
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(170px, 1fr));
+      gap: 12px;
+    }
+    .kpi{
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow2);
+      backdrop-filter: blur(12px);
+    }
+    .kpi .label{
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .kpi .value{
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: .01em;
+    }
+
+    .card{
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .cardTitle{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .cardTitle b{ font-size: 14px; font-weight: 800; }
+
+    .toolbar{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin: 10px 0 12px 0;
+      padding: 10px;
+      border-radius: 16px;
+      background: rgba(15,23,42,.02);
+      border: 1px solid rgba(15,23,42,.08);
+    }
+    .toolbar .left, .toolbar .right{
+      display:flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .mini{
+      min-width: 160px;
+    }
+
+    table{
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border-radius: 18px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.80);
+    }
+    thead th{
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: left;
+      padding: 12px 12px;
+      border-bottom: 1px solid rgba(15,23,42,.10);
+      white-space: nowrap;
+      font-weight: 800;
+      letter-spacing: .01em;
+    }
+    tbody td{
+      padding: 12px 12px;
+      border-bottom: 1px solid rgba(15,23,42,.08);
+      vertical-align: middle;
+      font-size: 13px;
+    }
+    tbody tr:hover{ background: rgba(15,23,42,.03); }
+    tbody tr.ok{
+      background: var(--okBg);
+      box-shadow: inset 4px 0 0 var(--okBd);
+    }
+    tbody tr.non-ok{
+      background: var(--badBg);
+      box-shadow: inset 4px 0 0 var(--badBd);
+    }
+
+    .target-input{ max-width: 140px; }
+
+    select option{
+      color: var(--selectOptionText) !important;
+      background: var(--selectOptionBg) !important;
+    }
+
+    .badge{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.92);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      box-shadow: 0 8px 18px rgba(15,23,42,.08);
+    }
+    .dot{
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(15,23,42,.35);
+    }
+    .dot.low{ background: rgba(239,68,68,.85); }
+    .dot.mid{ background: rgba(245,158,11,.85); }
+    .dot.high{ background: rgba(34,197,94,.85); }
+
+    .chartsGrid{
+      display: grid;
+      grid-template-columns: 2fr 1.2fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .chartBox{
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.78);
+      border: 1px solid rgba(15,23,42,.10);
+      min-height: 420px;
+      box-shadow: var(--shadow2);
+    }
+    .chartBox.tall{ min-height: 520px; }
+    .chartTitle{
+      display:flex;
+      justify-content: space-between;
+      align-items:center;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: .01em;
+    }
+    .chartTitle .actions{
+      display:flex;
+      gap: 8px;
+      align-items:center;
+    }
+
+    .modalBack{
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,.45);
+      display:none;
+      justify-content:center;
+      align-items:center;
+      padding: 18px;
+      z-index: 50;
+    }
+    .modal{
+      width: min(1200px, 96vw);
+      height: min(720px, 90vh);
+      background: rgba(255,255,255,.96);
+      border: 1px solid rgba(15,23,42,.12);
+      border-radius: 20px;
+      box-shadow: 0 30px 90px rgba(15,23,42,.28);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+      backdrop-filter: blur(12px);
+    }
+    .modalHead{
+      display:flex;
+      justify-content: space-between;
+      align-items:center;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(15,23,42,.10);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .modalBody{ flex: 1; padding: 10px; }
+    .muted{ color: var(--muted); font-weight: 600; }
+
+    .statusWrap{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+    }
+    tr td:nth-child(5) input[type="radio"]{
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+    }
+
+    /* Goldilocks meter */
+    .gmeter{
+      width: 100%;
+      padding: 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.85);
+      box-shadow: 0 10px 22px rgba(15,23,42,.06);
+    }
+    .gmeterTop{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: rgba(15,23,42,.70);
+      font-weight: 700;
+      flex-wrap: wrap;
+    }
+    .gmeterTop .pill{
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(15,23,42,.03);
+      white-space: nowrap;
+    }
+    .gmeterTrack{
+      position: relative;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(15,23,42,.08);
+      overflow: hidden;
+    }
+    .gmeterBand{
+      position:absolute;
+      top: 0;
+      height: 100%;
+      border-radius: 999px;
+      background: rgba(37,99,235,.22);
+    }
+    .gmeterMarker{
+      position:absolute;
+      top: -4px;
+      width: 3px;
+      height: 20px;
+      border-radius: 999px;
+      background: rgba(15,23,42,.80);
+      box-shadow: 0 8px 18px rgba(15,23,42,.20);
+    }
+    .gmeterMarker.ok{ background: rgba(34,197,94,.90); }
+    .gmeterMarker.bad{ background: rgba(239,68,68,.90); }
+
+    .gmeterBottom{
+      display:flex;
+      justify-content:space-between;
+      margin-top: 8px;
+      font-size: 11px;
+      color: rgba(15,23,42,.62);
+      font-weight: 700;
+    }
+    .gmeterHint{
+      margin-top: 8px;
+      font-size: 11px;
+      color: rgba(15,23,42,.62);
+      line-height: 1.25;
+    }
+    .gmeterAfter{
+      margin-top: 8px;
+      font-size: 11px;
+      color: rgba(15,23,42,.65);
+      font-weight: 700;
+    }
+
+    tr[data-anchored="true"] td:nth-child(5) .gmeter{
+      border-color: rgba(37,99,235,.22);
+      box-shadow: 0 14px 30px rgba(37,99,235,.10);
+    }
+
+    /* Collapsible toggle */
+    .gToggle{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.85);
+      box-shadow: 0 10px 22px rgba(15,23,42,.06);
+      cursor: pointer;
+      user-select: none;
+    }
+    .gToggleLeft{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      color: rgba(15,23,42,.78);
+      font-weight: 800;
+      font-size: 12px;
+    }
+    .gToggleBadge{
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(15,23,42,.03);
+      font-weight: 800;
+      color: rgba(15,23,42,.75);
+    }
+    .gChevron{
+      width: 12px;
+      height: 12px;
+      border-right: 2px solid rgba(15,23,42,.55);
+      border-bottom: 2px solid rgba(15,23,42,.55);
+      transform: rotate(45deg);
+      transition: transform .14s ease;
+      opacity: .75;
+    }
+    tr[data-meter-open="true"] .gChevron{
+      transform: rotate(225deg);
+    }
+    tr[data-meter-open="false"] .gmeter{
+      display:none;
+    }
+
+    /* Click tick on bar */
+    .gmeterClick{
+      position:absolute;
+      top: -6px;
+      width: 2px;
+      height: 24px;
+      border-radius: 999px;
+      background: rgba(15,23,42,.55);
+      box-shadow: 0 10px 20px rgba(15,23,42,.14);
+    }
+    .gmeterClick.final{
+      background: rgba(15,23,42,.85);
+    }
+
+    /* Curve panel */
+    .gcurve{
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.86);
+    }
+    .gcurveHead{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: rgba(15,23,42,.62);
+      font-weight: 800;
+    }
+    .gcurveSvg{
+      width: 100%;
+      height: 86px;
+      display:block;
+    }
+    .gcurvePath{
+      fill: none;
+      stroke: rgba(37,99,235,.85);
+      stroke-width: 2.2;
+      stroke-linecap: round;
+    }
+    .gcurveGrid{
+      stroke: rgba(15,23,42,.10);
+      stroke-width: 1;
+      shape-rendering: crispEdges;
+    }
+    .gcurveDot{
+      fill: rgba(15,23,42,.85);
+    }
+    .gcurveTick{
+      stroke: rgba(15,23,42,.45);
+      stroke-width: 2;
+    }
+    .gcurveTickFinal{
+      stroke: rgba(15,23,42,.85);
+      stroke-width: 2.5;
+    }
+
+    /* Presets */
+    .presetRow{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .presetBtn{
+      flex: 1 1 auto;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.12);
+      background: rgba(255,255,255,.92);
+      color: rgba(15,23,42,.82);
+      font-weight: 800;
+      font-size: 12px;
+      cursor: pointer;
+      box-shadow: 0 1px 0 rgba(255,255,255,.7) inset;
+      transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+    .presetBtn:hover{
+      transform: translateY(-1px);
+      background: rgba(255,255,255,1);
+      box-shadow: 0 10px 20px rgba(15,23,42,.10);
+    }
+    .presetBtn:active{ transform: translateY(0px); }
+    .presetBtn.active{
+      border-color: rgba(37,99,235,.35);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.16);
+    }
+
+    /* Export schema badge */
+    .schemaBadge{
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(15,23,42,.03);
+      color: rgba(15,23,42,.70);
+      font-size: 12px;
+      font-weight: 800;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .schemaBadge code{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+      font-weight: 900;
+      color: rgba(15,23,42,.78);
+    }
+
+    /* Row spotlight */
+    tbody tr{ transition: opacity .12s ease, filter .12s ease; }
+    #logTable.spotlight tbody tr{
+      opacity: .45;
+      filter: grayscale(.10);
+    }
+    #logTable.spotlight tbody tr.spotlight{
+      opacity: 1;
+      filter: none;
+      outline: 2px solid rgba(37,99,235,.22);
+      outline-offset: -2px;
+    }
+
+    @media (max-width: 1200px){
+      .kpis{ grid-template-columns: repeat(2, minmax(170px, 1fr)); }
+      .chartsGrid{ grid-template-columns: 1fr; }
+    }
+    @media (max-width: 980px){
+      .shell{ grid-template-columns: 1fr; }
+      .sidebar{ position: relative; height: auto; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brandMark"></div>
+        <div class="brandTitle">
+          <b>RAIL Console</b>
+          <span>Trust-aware HITL streams</span>
+        </div>
+      </div>
+
+      <div class="sideCard">
+        <h4>Connection</h4>
+        <button id="loadConfigButton" class="btn" style="width:100%;">Load Config (auto-connect)</button>
+        <div style="height:10px;"></div>
+        <button id="disconnectButton" class="btn" style="width:100%;" disabled>Disconnect</button>
+      </div>
+
+      <div class="sideCard">
+        <h4>Data</h4>
+        <input type="file" id="csvFileInput" accept=".csv" style="width:100%; margin-bottom:10px;">
+        <button id="loadCsvButton" class="btn" style="width:100%;">Send CSV</button>
+        <div style="height:10px;"></div>
+        <button id="exportNonOkButton" class="btn" style="width:100%;">Export Non-OK Rows (eligible)</button>
+
+        <div class="schemaBadge" title="Export payload schema used for reproducibility">
+          <span>Export schema</span>
+          <code id="exportSchemaCode">RAIL.non_ok_export.v4</code>
+        </div>
+
+        <div style="height:10px;"></div>
+        <button id="recalibrateButton" class="btn primary" style="width:100%;">Recalibrate Model</button>
+      </div>
+
+      <div class="sideCard">
+        <h4>Vigilance index (transparent)</h4>
+
+        <div class="grid2">
+          <div class="field">
+            <label>τmin (s)</label>
+            <input id="tauMinInput" type="number" step="0.1" value="0.8">
+          </div>
+          <div class="field">
+            <label>τmax (s)</label>
+            <input id="tauMaxInput" type="number" step="0.1" value="6.0">
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:10px;">
+          <div class="field">
+            <label>k (shape)</label>
+            <input id="kInput" type="number" step="0.1" value="1.2">
+          </div>
+          <div class="field">
+            <label>θ (eligible if V ≥ θ)</label>
+            <input id="thetaInput" type="number" step="0.01" value="0.60">
+          </div>
+        </div>
+
+        <div style="height:10px;"></div>
+
+        <div class="grid2">
+          <div class="field">
+            <label>w_latency</label>
+            <input id="wLatencyInput" type="number" step="0.1" value="1.0">
+          </div>
+          <div class="field">
+            <label>w_features</label>
+            <input id="wFeaturesInput" type="number" step="0.01" value="0.02">
+          </div>
+        </div>
+
+        <div style="height:10px;"></div>
+
+        <div class="grid2">
+          <div class="field">
+            <label>w_edits</label>
+            <input id="wEditsInput" type="number" step="0.01" value="0.12">
+          </div>
+          <div class="field">
+            <label>w_focus</label>
+            <input id="wFocusInput" type="number" step="0.01" value="0.03">
+          </div>
+        </div>
+
+        <div style="height:10px;"></div>
+
+        <div class="field">
+          <label>Presets</label>
+          <div class="presetRow">
+            <button id="presetConservative" class="presetBtn" type="button">Conservative</button>
+            <button id="presetBalanced" class="presetBtn active" type="button">Balanced</button>
+            <button id="presetAggressive" class="presetBtn" type="button">Aggressive</button>
+          </div>
+        </div>
+
+        <div class="hint">
+          <div class="muted" style="margin-bottom:8px;">
+            Goldilocks window: too fast yields low vigilance, too slow yields low vigilance.
+            Anchor is set on first hover or focus, so Δ measures deliberation time, not queue delay.
+          </div>
+          <div class="mono">
+            Δ = t_decision - t_anchor<br>
+            β = w_features·n_features + w_edits·n_edits + w_focus·focus_seconds<br>
+            s_fast = σ(k · (w_latency·Δ - (τmin + β)))<br>
+            s_slow = σ(k · ((τmax + β) - w_latency·Δ))<br>
+            V = s_fast · s_slow
+          </div>
+          <div class="muted" style="margin-top:8px;">
+            Each row tooltip prints Δ, β, z_fast, z_slow, s_fast, s_slow.
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="statusLine">
+          <b id="statusTitle">Disconnected</b>
+          <span id="statusSubtitle">Load a config to connect automatically.</span>
+        </div>
+        <div class="chips">
+          <span class="chip" id="countsChip">OK: 0 • Non-OK: 0</span>
+          <span class="chip" id="qualityChip">Eligible non-ok: 0</span>
+          <span class="chip" id="brokerChip">Broker: -</span>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="label">Rows in queue</div>
+          <div class="value" id="kpiRows">0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Eligible non-ok (V ≥ θ)</div>
+          <div class="value" id="kpiEligible">0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Avg V (decisions)</div>
+          <div class="value" id="kpiAvgV">-</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Median Δ (decisions, s)</div>
+          <div class="value" id="kpiMedDelta">-</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">
+          <b>Live Validation Queue</b>
+          <span class="chip">Target editable only for Non-OK rows</span>
+        </div>
+
+        <div class="toolbar">
+          <div class="left">
+            <select id="filterStatus" class="mini">
+              <option value="all">Show: All</option>
+              <option value="non-ok">Show: Non-OK</option>
+              <option value="ok">Show: OK</option>
+              <option value="undecided">Show: Undecided</option>
+            </select>
+            <input id="searchBox" class="mini" placeholder="Search features / notes / timestamp..." />
+            <select id="maxRows" class="mini">
+              <option value="200">Max rows: 200</option>
+              <option value="500" selected>Max rows: 500</option>
+              <option value="1000">Max rows: 1000</option>
+            </select>
+          </div>
+          <div class="right">
+            <button id="clearTable" class="btn ghost">Clear table</button>
+            <button id="pauseStream" class="btn ghost">Pause UI</button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:170px;">Timestamp</th>
+              <th>Features</th>
+              <th style="width:130px;">Target</th>
+              <th style="width:120px;">Predicted</th>
+              <th style="width:320px;">Status</th>
+              <th>Operator note</th>
+              <th style="width:260px;">Vigilance</th>
+            </tr>
+          </thead>
+          <tbody id="logTable"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">
+          <b>Monitoring</b>
+          <span class="chip" id="chartHint">-</span>
+        </div>
+
+        <div class="chartsGrid">
+          <div class="chartBox tall">
+            <div class="chartTitle">
+              <span>Predicted, Target, and Absolute Error</span>
+              <div class="actions">
+                <button class="btn ghost" id="expandMainChart">Expand</button>
+                <button class="btn ghost" id="resetMainChart">Reset view</button>
+              </div>
+            </div>
+            <div id="mainChart" style="height:520px;"></div>
+          </div>
+
+          <div class="chartBox tall">
+            <div class="chartTitle">
+              <span>Decisions and Vigilance</span>
+              <div class="actions">
+                <button class="btn ghost" id="expandVChart">Expand</button>
+              </div>
+            </div>
+            <div id="barChart" style="height:240px;"></div>
+            <div id="vChart" style="height:250px; margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="modalBack" class="modalBack">
+    <div class="modal">
+      <div class="modalHead">
+        <div>
+          <b id="modalTitle">Chart</b>
+          <span class="muted" id="modalSub" style="margin-left:8px;">-</span>
+        </div>
+        <button id="closeModal" class="btn ghost">Close</button>
+      </div>
+      <div class="modalBody">
+        <div id="modalChart" style="width:100%; height:100%;"></div>
+      </div>
+    </div>
+  </div>
+
+<!-- Replace ONLY your entire <script>...</script> block with this one.
+     Keep your HTML + CSS exactly as they are. -->
+
+<script>
+  // =========================
+  // State
+  // =========================
+  let client;
+  let isConnected = false;
+  let config = {};
+
+  const statusTitle = document.getElementById('statusTitle');
+  const statusSubtitle = document.getElementById('statusSubtitle');
+  const brokerChip = document.getElementById('brokerChip');
+
+  const logTable = document.getElementById('logTable');
+  const countsChip = document.getElementById('countsChip');
+  const qualityChip = document.getElementById('qualityChip');
+  const chartHint = document.getElementById('chartHint');
+
+  const kpiRows = document.getElementById('kpiRows');
+  const kpiEligible = document.getElementById('kpiEligible');
+  const kpiAvgV = document.getElementById('kpiAvgV');
+  const kpiMedDelta = document.getElementById('kpiMedDelta');
+
+  const filterStatus = document.getElementById('filterStatus');
+  const searchBox = document.getElementById('searchBox');
+  const maxRowsSel = document.getElementById('maxRows');
+
+  let publishedRows = [];
+  let csvLines = [];
+  let rowCounter = 0;
+  let uiPaused = false;
+
+  // =========================
+  // Plotly
+  // =========================
+  const MAX_POINTS = 900;
+
+  const tTracePred   = { x: [], y: [], mode: 'lines', name: 'Predicted', line: {} };
+  const tTraceTarget = { x: [], y: [], mode: 'lines', name: 'Target', line: {} };
+  const tTraceErr    = { x: [], y: [], mode: 'lines', name: '|Error|', yaxis: 'y2', line: { dash: 'dot' } };
+
+  const vTrace = { x: [], y: [], mode: 'lines+markers', name: 'V (decisions)', line: {} };
+
+  function basePlotlyLayout(title) {
+    return {
+      title,
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { color: '#0f172a' },
+      margin: { l: 52, r: 24, t: 40, b: 52 },
+      xaxis: { gridcolor: 'rgba(15,23,42,.08)' },
+      yaxis: { gridcolor: 'rgba(15,23,42,.08)', rangemode: 'tozero' },
+      legend: { orientation: 'h' }
+    };
+  }
+
+  Plotly.newPlot('mainChart', [tTracePred, tTraceTarget, tTraceErr], {
+    ...basePlotlyLayout('Predicted vs Target (+ absolute error)'),
+    xaxis: {
+      title: 'Time',
+      gridcolor: 'rgba(15,23,42,.08)',
+      rangeslider: { visible: true, thickness: 0.06 }
+    },
+    yaxis: { title: 'Value', gridcolor: 'rgba(15,23,42,.08)' },
+    yaxis2: {
+      title: '|Error|',
+      overlaying: 'y',
+      side: 'right',
+      gridcolor: 'rgba(255,255,255,0)',
+      rangemode: 'tozero'
+    }
+  }, { responsive: true, displayModeBar: true });
+
+  Plotly.newPlot('barChart', [{
+    x: ['OK', 'Non-OK', 'Undecided'],
+    y: [0, 0, 0],
+    type: 'bar'
+  }], {
+    ...basePlotlyLayout('Decision counts'),
+    margin: { l: 52, r: 24, t: 26, b: 44 }
+  }, { responsive: true, displayModeBar: false });
+
+  Plotly.newPlot('vChart', [vTrace], {
+    ...basePlotlyLayout('Vigilance over time (decisions)'),
+    margin: { l: 52, r: 24, t: 26, b: 44 },
+    yaxis: { title: 'V', gridcolor: 'rgba(15,23,42,.08)', range: [0, 1] }
+  }, { responsive: true, displayModeBar: false });
+
+  // =========================
+  // Buttons + UI
+  // =========================
+  document.getElementById('loadConfigButton').addEventListener('click', loadConfig);
+  document.getElementById('disconnectButton').addEventListener('click', disconnectFromBroker);
+  document.getElementById('loadCsvButton').addEventListener('click', loadCsvData);
+  document.getElementById('exportNonOkButton').addEventListener('click', exportNonOkRows);
+  document.getElementById('recalibrateButton').addEventListener('click', recalibrateModel);
+
+  document.getElementById('clearTable').addEventListener('click', clearTable);
+  document.getElementById('pauseStream').addEventListener('click', togglePause);
+
+  filterStatus.addEventListener('change', applyFilters);
+  searchBox.addEventListener('input', applyFilters);
+
+  document.getElementById('expandMainChart').addEventListener('click', () => openModal('Main chart', 'Predicted/Target/Error', 'mainChart'));
+  document.getElementById('expandVChart').addEventListener('click', () => openModal('Vigilance chart', 'Decision stream', 'vChart'));
+  document.getElementById('resetMainChart').addEventListener('click', () => Plotly.relayout('mainChart', { 'xaxis.autorange': true, 'yaxis.autorange': true, 'yaxis2.autorange': true }));
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  document.getElementById('modalBack').addEventListener('click', (e) => { if (e.target.id === 'modalBack') closeModal(); });
+
+  // =========================
+  // Vigilance params
+  // =========================
+  function clampNum(x, lo, hi, fallback) {
+    if (Number.isFinite(x)) return Math.max(lo, Math.min(hi, x));
+    return fallback;
+  }
+  function getTauMin()    { return clampNum(parseFloat(document.getElementById('tauMinInput').value), 0, 999, 0.8); }
+  function getTauMax()    { return clampNum(parseFloat(document.getElementById('tauMaxInput').value), 0.1, 999, 6.0); }
+  function getK()         { return clampNum(parseFloat(document.getElementById('kInput').value), 0.01, 50, 1.2); }
+  function getTheta()     { return clampNum(parseFloat(document.getElementById('thetaInput').value), 0, 1, 0.60); }
+  function getWLatency()  { return clampNum(parseFloat(document.getElementById('wLatencyInput').value), 0, 10, 1.0); }
+  function getWFeatures() { return clampNum(parseFloat(document.getElementById('wFeaturesInput').value), 0, 5, 0.02); }
+  function getWEdits()    { return clampNum(parseFloat(document.getElementById('wEditsInput').value), 0, 5, 0.12); }
+  function getWFocus()    { return clampNum(parseFloat(document.getElementById('wFocusInput').value), 0, 5, 0.03); }
+
+  // =========================
+  // Math utils
+  // =========================
+  function sigmoid(x) {
+    if (x >= 0) {
+      const z = Math.exp(-x);
+      return 1 / (1 + z);
+    } else {
+      const z = Math.exp(x);
+      return z / (1 + z);
+    }
+  }
+
+  // =========================
+  // Goldilocks meter + curve engine
+  // =========================
+  const activeMeters = new Map(); // rowId -> rafId
+
+  function getDynamicBeta(row) {
+    const nFeatures = row.querySelectorAll('td:nth-child(2) select option').length || 0;
+    const nEdits = parseInt(row.dataset.edits || "0", 10);
+    const focusSec = (parseInt(row.dataset.focusMs || "0", 10) / 1000.0);
+
+    const beta =
+      (getWFeatures() * nFeatures) +
+      (getWEdits() * nEdits) +
+      (getWFocus() * focusSec);
+
+    return { beta, nFeatures, nEdits, focusSec };
+  }
+
+  function V_of_delta(deltaSec, beta) {
+    const k = getK();
+    const tauMin = getTauMin();
+    const tauMax = getTauMax();
+    const wL = getWLatency();
+
+    const zFast = k * ((wL * deltaSec) - (tauMin + beta));
+    const zSlow = k * ((tauMax + beta) - (wL * deltaSec));
+
+    const sFast = sigmoid(zFast);
+    const sSlow = sigmoid(zSlow);
+
+    return sFast * sSlow;
+  }
+
+  function buildVPath(beta, tMax, width, height, samples) {
+    const w = Math.max(10, width);
+    const h = Math.max(10, height);
+    const n = Math.max(16, samples || 72);
+
+    let d = "";
+    for (let i = 0; i < n; i++) {
+      const t = (i / (n - 1)) * tMax;
+      const V = V_of_delta(t, beta);
+      const x = (i / (n - 1)) * w;
+      const y = (1 - Math.max(0, Math.min(1, V))) * (h - 1);
+      d += (i === 0 ? "M" : " L") + x.toFixed(2) + " " + y.toFixed(2);
+    }
+    return d;
+  }
+
+  function updateVCurve(row, deltaNowSec, deltaFinalSecOrNull) {
+    if (!row || !row._g || !row._g.vPathEl) return;
+
+    const { beta } = getDynamicBeta(row);
+
+    const tauMax = getTauMax();
+    const tMax = Math.max(1.0, (tauMax + beta) * 1.25);
+
+    const w = 320;
+    const h = 86;
+
+    row._g.vPathEl.setAttribute("d", buildVPath(beta, tMax, w, h, 72));
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const xNow = (clamp(deltaNowSec, 0, tMax) / tMax) * w;
+    const vNow = V_of_delta(deltaNowSec, beta);
+    const yNow = (1 - clamp(vNow, 0, 1)) * (h - 1);
+
+    row._g.dotEl.setAttribute("cx", xNow.toFixed(2));
+    row._g.dotEl.setAttribute("cy", yNow.toFixed(2));
+
+    row._g.cTickEl.setAttribute("x1", xNow.toFixed(2));
+    row._g.cTickEl.setAttribute("x2", xNow.toFixed(2));
+    row._g.cTickEl.style.display = "block";
+
+    if (deltaFinalSecOrNull !== null && Number.isFinite(deltaFinalSecOrNull)) {
+      const xF = (clamp(deltaFinalSecOrNull, 0, tMax) / tMax) * w;
+      row._g.fTickEl.setAttribute("x1", xF.toFixed(2));
+      row._g.fTickEl.setAttribute("x2", xF.toFixed(2));
+      row._g.fTickEl.style.display = "block";
+    } else {
+      row._g.fTickEl.style.display = "none";
+    }
+  }
+
+  function renderGoldilocksMeter(row, deltaNowSec) {
+    if (!row || !row._g) return;
+
+    const tauMin = getTauMin();
+    const tauMax = getTauMax();
+    const wL = getWLatency();
+
+    const { beta } = getDynamicBeta(row);
+
+    const winLo = (tauMin + beta);
+    const winHi = (tauMax + beta);
+
+    const trackMax = Math.max(1.0, winHi * 1.15);
+    const x = wL * deltaNowSec;
+
+    const pct = (v) => `${Math.max(0, Math.min(100, (v / trackMax) * 100))}%`;
+
+    row._g.bandEl.style.left = pct(winLo);
+    row._g.bandEl.style.width = `${Math.max(0, ((winHi - winLo) / trackMax) * 100)}%`;
+
+    row._g.markerEl.style.left = pct(x);
+
+    const inside = (x >= winLo && x <= winHi);
+    row._g.markerEl.classList.remove('ok', 'bad');
+    row._g.markerEl.classList.add(inside ? 'ok' : 'bad');
+
+    row._g.deltaEl.textContent = deltaNowSec.toFixed(2);
+    row._g.betaEl.textContent = beta.toFixed(2);
+    row._g.winEl.textContent = `${winLo.toFixed(2)} to ${winHi.toFixed(2)}`;
+    row._g.maxEl.textContent = `${trackMax.toFixed(2)}s`;
+
+    if (!row.dataset.anchorTs) {
+      row._g.hintEl.textContent = "Click inside the row or focus an input to start timing.";
+    } else if (row.dataset.decisionTs) {
+      row._g.hintEl.textContent = inside ? "Decision landed inside the window." : "Decision landed outside the window.";
+    } else {
+      const denom = Math.max(1e-6, wL);
+      if (inside) {
+        const remain = (winHi - x) / denom;
+        row._g.hintEl.textContent = `Inside window. Time left: ${remain.toFixed(2)}s`;
+      } else if (x < winLo) {
+        const wait = (winLo - x) / denom;
+        row._g.hintEl.textContent = `Too fast. Wait: ${wait.toFixed(2)}s`;
+      } else {
+        row._g.hintEl.textContent = "Too slow. Decide earlier to stay within the window.";
+      }
+    }
+
+    const finalDelta = row.dataset.decisionTs ? parseFloat(row.dataset.delta || "NaN") : null;
+    updateVCurve(row, deltaNowSec, (finalDelta !== null && Number.isFinite(finalDelta)) ? finalDelta : null);
+  }
+
+  function startGoldilocksMeter(row) {
+    if (!row) return;
+    const key = row.dataset.rowId;
+    if (!key) return;
+    if (activeMeters.has(key)) return;
+
+    const tick = () => {
+      const decided = row.classList.contains('ok') || row.classList.contains('non-ok') || !!row.dataset.decisionTs;
+      if (decided) {
+        stopGoldilocksMeter(row);
+        return;
+      }
+
+      const anchorTs = parseInt(row.dataset.anchorTs || "0", 10);
+      const deltaNowSec = anchorTs ? (Date.now() - anchorTs) / 1000.0 : 0;
+
+      renderGoldilocksMeter(row, deltaNowSec);
+
+      const rafId = requestAnimationFrame(tick);
+      activeMeters.set(key, rafId);
+    };
+
+    const rafId = requestAnimationFrame(tick);
+    activeMeters.set(key, rafId);
+  }
+
+  function stopGoldilocksMeter(row) {
+    if (!row) return;
+    const key = row.dataset.rowId;
+    if (!key) return;
+
+    const rafId = activeMeters.get(key);
+    if (rafId) cancelAnimationFrame(rafId);
+    activeMeters.delete(key);
+
+    const anchorTs = parseInt(row.dataset.anchorTs || "0", 10);
+    const decisionTs = parseInt(row.dataset.decisionTs || "0", 10);
+    if (anchorTs && decisionTs) {
+      const delta = (decisionTs - anchorTs) / 1000.0;
+      renderGoldilocksMeter(row, delta);
+      updateVCurve(row, delta, delta);
+    }
+  }
+
+  function renderClickTick(row, deltaSec) {
+    if (!row || !row._g) return;
+
+    const tauMin = getTauMin();
+    const tauMax = getTauMax();
+    const wL = getWLatency();
+    const { beta } = getDynamicBeta(row);
+
+    const winLo = (tauMin + beta);
+    const winHi = (tauMax + beta);
+
+    const trackMax = Math.max(1.0, winHi * 1.15);
+    const x = wL * deltaSec;
+
+    const pct = (v) => `${Math.max(0, Math.min(100, (v / trackMax) * 100))}%`;
+
+    row._g.clickEl.style.left = pct(x);
+    row._g.clickEl.style.display = "block";
+
+    const inside = (x >= winLo && x <= winHi);
+    const decision = row.dataset.decision || "-";
+    const msg = `Clicked (${decision}) at x=w_latency·Δ=${x.toFixed(2)}s, window=[${winLo.toFixed(2)}, ${winHi.toFixed(2)}]s, ${inside ? "inside" : "outside"}.`;
+    row._g.afterEl.textContent = msg;
+    row._g.afterEl.style.display = "block";
+
+    if (row._g.toggleTextEl) row._g.toggleTextEl.textContent = "Show deliberation window (click recorded)";
+  }
+
+  // =========================
+  // Spotlight
+  // =========================
+  function enableSpotlight(row) {
+    if (!row) return;
+    const rows = Array.from(logTable.querySelectorAll('tr'));
+    for (const r of rows) r.classList.remove('spotlight');
+    row.classList.add('spotlight');
+    logTable.classList.add('spotlight');
+  }
+
+  function disableSpotlight() {
+    const rows = Array.from(logTable.querySelectorAll('tr'));
+    for (const r of rows) r.classList.remove('spotlight');
+    logTable.classList.remove('spotlight');
+  }
+
+  function holdSpotlightThenRelease(row, ms) {
+    enableSpotlight(row);
+    window.setTimeout(() => {
+      disableSpotlight();
+    }, Math.max(0, ms || 1000));
+  }
+
+  // =========================
+  // Telemetry model (table badge + export)
+  // =========================
+  function markRowCreated(row) {
+    row.dataset.rowId = `row-${rowCounter++}`;
+
+    row.dataset.anchorTs = "";
+    row.dataset.anchorReason = "";
+    row.dataset.decisionTs = "";
+    row.dataset.decision = "";
+
+    row.dataset.edits = "0";
+    row.dataset.focusMs = "0";
+    row.dataset.focusStart = "";
+
+    row.dataset.delta = "";
+    row.dataset.beta = "";
+    row.dataset.zFast = "";
+    row.dataset.zSlow = "";
+    row.dataset.sFast = "";
+    row.dataset.sSlow = "";
+    row.dataset.vigilance = "";
+    row.dataset.vPushed = "";
+
+    row.setAttribute("data-anchored", "false");
+    row.setAttribute("data-meter-open", "false");
+  }
+
+  function ensureAnchor(row, reason) {
+    if (row.dataset.anchorTs) return;
+    row.dataset.anchorTs = String(Date.now());
+    row.dataset.anchorReason = reason;
+    row.setAttribute("data-anchored", "true");
+    renderVBadge(row, null);
+  }
+
+  function focusStart(row) {
+    if (!row.dataset.focusStart) row.dataset.focusStart = String(Date.now());
+  }
+
+  function focusEnd(row) {
+    const start = parseInt(row.dataset.focusStart || "0", 10);
+    if (!start) return;
+    const now = Date.now();
+    const prev = parseInt(row.dataset.focusMs || "0", 10);
+    row.dataset.focusMs = String(prev + (now - start));
+    row.dataset.focusStart = "";
+  }
+
+  function recordEdit(row) {
+    row.dataset.edits = String(parseInt(row.dataset.edits || "0", 10) + 1);
+  }
+
+  // IMPORTANT CHANGE:
+  // Do NOT create an anchor at decision time.
+  // If no anchor exists (no click/focus happened), do not compute V timing.
+  function recordDecision(row, decisionValue) {
+    row.dataset.decision = decisionValue;
+    if (!row.dataset.decisionTs) row.dataset.decisionTs = String(Date.now());
+
+    if (!row.dataset.anchorTs) {
+      // No interaction started timing, so keep V empty.
+      renderVBadge(row, null);
+      updateCountsAndCharts();
+      updateKpisAndQuality();
+      applyFilters();
+      return;
+    }
+
+    computeAndRenderV(row);
+
+    if (row.dataset.decisionTs && row.dataset.vPushed !== "true") {
+      row.dataset.vPushed = "true";
+      const ts = row.querySelector('td:first-child')?.textContent || new Date().toLocaleString();
+      const V = parseFloat(row.dataset.vigilance || "NaN");
+      if (Number.isFinite(V)) {
+        vTrace.x.push(ts);
+        vTrace.y.push(V);
+        trimSeries(vTrace, MAX_POINTS);
+        Plotly.update('vChart', { x: [vTrace.x], y: [vTrace.y] });
+      }
+    }
+
+    stopGoldilocksMeter(row);
+
+    const anchorTs = parseInt(row.dataset.anchorTs || "0", 10);
+    const decisionTs = parseInt(row.dataset.decisionTs || "0", 10);
+    if (anchorTs && decisionTs) {
+      const delta = (decisionTs - anchorTs) / 1000.0;
+      renderClickTick(row, delta);
+      updateVCurve(row, delta, delta);
+    }
+
+    if (row.getAttribute("data-meter-open") === "true") {
+      holdSpotlightThenRelease(row, 1000);
+    }
+
+    updateCountsAndCharts();
+    updateKpisAndQuality();
+    applyFilters();
+  }
+
+  function computeAndRenderV(row) {
+    const anchorTs = parseInt(row.dataset.anchorTs || "0", 10);
+    const decisionTs = parseInt(row.dataset.decisionTs || "0", 10);
+    if (!anchorTs || !decisionTs) return;
+
+    const delta = (decisionTs - anchorTs) / 1000.0;
+
+    const nFeatures = row.querySelectorAll('td:nth-child(2) select option').length || 0;
+    const nEdits = parseInt(row.dataset.edits || "0", 10);
+    const focusSec = (parseInt(row.dataset.focusMs || "0", 10) / 1000.0);
+
+    const beta =
+      (getWFeatures() * nFeatures) +
+      (getWEdits() * nEdits) +
+      (getWFocus() * focusSec);
+
+    const k = getK();
+    const tauMin = getTauMin();
+    const tauMax = getTauMax();
+    const wL = getWLatency();
+
+    const zFast = k * ((wL * delta) - (tauMin + beta));
+    const zSlow = k * ((tauMax + beta) - (wL * delta));
+
+    const sFast = sigmoid(zFast);
+    const sSlow = sigmoid(zSlow);
+
+    const V = sFast * sSlow;
+
+    row.dataset.delta = String(delta);
+    row.dataset.beta = String(beta);
+    row.dataset.zFast = String(zFast);
+    row.dataset.zSlow = String(zSlow);
+    row.dataset.sFast = String(sFast);
+    row.dataset.sSlow = String(sSlow);
+    row.dataset.vigilance = String(V);
+
+    renderVBadge(row, V);
+  }
+
+  function renderVBadge(row, V) {
+    const cell = row.querySelector('td:nth-child(7)');
+    if (!cell) return;
+
+    if (!Number.isFinite(V)) {
+      cell.innerHTML = `<span class="badge"><span class="dot"></span><span>-</span></span>`;
+      return;
+    }
+
+    const theta = getTheta();
+    let cls = "mid";
+    if (V < 0.45) cls = "low";
+    else if (V >= 0.75) cls = "high";
+
+    const tag = (V >= theta) ? "eligible" : "discard";
+
+    const delta = parseFloat(row.dataset.delta || "NaN");
+    const beta = parseFloat(row.dataset.beta || "NaN");
+    const zFast = parseFloat(row.dataset.zFast || "NaN");
+    const zSlow = parseFloat(row.dataset.zSlow || "NaN");
+    const sFast = parseFloat(row.dataset.sFast || "NaN");
+    const sSlow = parseFloat(row.dataset.sSlow || "NaN");
+
+    const nFeatures = row.querySelectorAll('td:nth-child(2) select option').length || 0;
+    const edits = row.dataset.edits || "0";
+    const focusSec = (parseInt(row.dataset.focusMs || "0", 10) / 1000.0).toFixed(2);
+
+    const reason = row.dataset.anchorReason || "-";
+    const decision = row.dataset.decision || "-";
+
+    const tooltip =
+      `Decision: ${decision}\n` +
+      `Anchor: ${reason}\n` +
+      `Δ = ${Number.isFinite(delta) ? delta.toFixed(3) : "-"} s\n` +
+      `n_features = ${nFeatures}\n` +
+      `n_edits = ${edits}\n` +
+      `focus = ${focusSec} s\n` +
+      `β = ${Number.isFinite(beta) ? beta.toFixed(3) : "-"}\n` +
+      `z_fast = ${Number.isFinite(zFast) ? zFast.toFixed(3) : "-"}   s_fast = ${Number.isFinite(sFast) ? sFast.toFixed(3) : "-"}\n` +
+      `z_slow = ${Number.isFinite(zSlow) ? zSlow.toFixed(3) : "-"}   s_slow = ${Number.isFinite(sSlow) ? sSlow.toFixed(3) : "-"}\n` +
+      `V = s_fast*s_slow = ${V.toFixed(3)} (θ=${theta.toFixed(2)} => ${tag})`;
+
+    cell.innerHTML = `<span class="badge" title="${escapeHtmlAttr(tooltip)}">
+      <span class="dot ${cls}"></span>
+      <span>V=${V.toFixed(2)}</span>
+      <span style="opacity:.7;">(${tag})</span>
+    </span>`;
+  }
+
+  function escapeHtmlAttr(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  function trimSeries(trace, maxPoints) {
+    if (trace.x.length > maxPoints) {
+      const extra = trace.x.length - maxPoints;
+      trace.x.splice(0, extra);
+      trace.y.splice(0, extra);
+    }
+  }
+
+  // =========================
+  // Presets
+  // =========================
+  function setPresetActive(id) {
+    const btns = [
+      document.getElementById('presetConservative'),
+      document.getElementById('presetBalanced'),
+      document.getElementById('presetAggressive')
+    ];
+    for (const b of btns) {
+      if (!b) continue;
+      b.classList.toggle('active', b.id === id);
+    }
+  }
+
+  function applyPreset(presetName) {
+    const presets = {
+      conservative: { tauMin: 1.0, tauMax: 7.5, k: 1.0, theta: 0.70, wL: 1.0, wF: 0.02, wE: 0.12, wFo: 0.03 },
+      balanced:     { tauMin: 0.8, tauMax: 6.0, k: 1.2, theta: 0.60, wL: 1.0, wF: 0.02, wE: 0.12, wFo: 0.03 },
+      aggressive:   { tauMin: 0.55, tauMax: 4.6, k: 1.6, theta: 0.52, wL: 1.0, wF: 0.02, wE: 0.12, wFo: 0.03 }
+    };
+
+    const p = presets[presetName];
+    if (!p) return;
+
+    document.getElementById('tauMinInput').value = p.tauMin;
+    document.getElementById('tauMaxInput').value = p.tauMax;
+    document.getElementById('kInput').value = p.k;
+    document.getElementById('thetaInput').value = p.theta;
+    document.getElementById('wLatencyInput').value = p.wL;
+    document.getElementById('wFeaturesInput').value = p.wF;
+    document.getElementById('wEditsInput').value = p.wE;
+    document.getElementById('wFocusInput').value = p.wFo;
+
+    updateKpisAndQuality();
+
+    const rows = Array.from(logTable.querySelectorAll('tr'));
+    for (const r of rows) {
+      if (r.dataset.decisionTs && r.dataset.anchorTs) computeAndRenderV(r);
+
+      if (r.getAttribute("data-meter-open") === "true") {
+        const anchorTs = parseInt(r.dataset.anchorTs || "0", 10);
+        const decided = !!r.dataset.decisionTs;
+        const deltaNow = decided
+          ? parseFloat(r.dataset.delta || "0")
+          : (anchorTs ? (Date.now() - anchorTs) / 1000.0 : 0);
+
+        renderGoldilocksMeter(r, Number.isFinite(deltaNow) ? deltaNow : 0);
+
+        if (decided && r.dataset.anchorTs) {
+          renderClickTick(r, deltaNow);
+          updateVCurve(r, deltaNow, deltaNow);
+        }
+      }
+    }
+  }
+
+  document.getElementById('presetConservative')?.addEventListener('click', () => {
+    setPresetActive('presetConservative');
+    applyPreset('conservative');
+  });
+  document.getElementById('presetBalanced')?.addEventListener('click', () => {
+    setPresetActive('presetBalanced');
+    applyPreset('balanced');
+  });
+  document.getElementById('presetAggressive')?.addEventListener('click', () => {
+    setPresetActive('presetAggressive');
+    applyPreset('aggressive');
+  });
+
+  // =========================
+  // Config + MQTT
+  // =========================
+  function validateConfig(cfg) {
+    return cfg && cfg.brokerURL && cfg.inputTopic && cfg.outputTopic && cfg.inputs;
+  }
+
+  function loadConfig() {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json';
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+      reader.onload = event => {
+        try {
+          config = JSON.parse(event.target.result);
+          if (!validateConfig(config)) {
+            alert('Invalid config. Required: brokerURL, inputTopic, outputTopic, inputs.');
+            return;
+          }
+          statusTitle.textContent = "Connecting...";
+          statusSubtitle.textContent = `Broker: ${config.brokerURL}`;
+          brokerChip.textContent = `Broker: ${config.brokerURL}`;
+          connectToBroker();
+        } catch (e) {
+          alert('Failed to read config: ' + e.message);
+        }
+      };
+      reader.readAsText(file);
+    });
+    fileInput.click();
+  }
+
+  function connectToBroker() {
+    client = mqtt.connect(config.brokerURL);
+
+    client.on('connect', () => {
+      isConnected = true;
+      statusTitle.textContent = "Connected";
+      statusSubtitle.textContent = `Subscribed: ${config.outputTopic} (+ ${config.inputTopic}-)`;
+      document.getElementById('disconnectButton').disabled = false;
+
+      const dynamicTopic = config.inputTopic + '-';
+      client.subscribe([config.outputTopic, dynamicTopic, config.inputTopic]);
+    });
+
+    client.on('message', onMessage);
+
+    client.on('error', err => {
+      statusTitle.textContent = "Error";
+      statusSubtitle.textContent = err.message || "Broker error";
+      console.error(err);
+    });
+
+    client.on('close', () => {
+      isConnected = false;
+      statusTitle.textContent = "Disconnected";
+      statusSubtitle.textContent = "Connection closed.";
+      document.getElementById('disconnectButton').disabled = true;
+    });
+  }
+
+  function disconnectFromBroker() {
+    if (client) client.end();
+  }
+
+  function onMessage(topic, message) {
+    if (uiPaused) return;
+
+    let data;
+    try { data = JSON.parse(message.toString()); }
+    catch { return; }
+
+    const dynamicTopic = config.inputTopic + '-';
+
+    if (topic === dynamicTopic) {
+      processDynamicData(data);
+    } else if (topic === config.outputTopic && data.median !== undefined) {
+      processReceivedData(data.median);
+    }
+  }
+
+  function processDynamicData(data) {
+    const rowData = {
+      Timestamp: new Date().toLocaleString(),
+      Target: '0',
+      Features: {},
+      Predicted: '-'
+    };
+
+    Object.keys(data).forEach(k => rowData.Features[k] = data[k]);
+    addRowToTable(rowData);
+
+    if (isConnected) publishNextRow(true);
+  }
+
+  function processReceivedData(medianValue) {
+    const row = publishedRows.shift();
+    if (!row) return;
+
+    const predCell = row.querySelector('td:nth-child(4)');
+    predCell.textContent = medianValue;
+
+    const ts = row.querySelector('td:first-child')?.textContent || new Date().toLocaleString();
+    const targetInput = row.querySelector('td:nth-child(3) input');
+    const targetVal = targetInput ? parseFloat(targetInput.value) : null;
+
+    updateMainChart(ts, medianValue, targetVal);
+    chartHint.textContent = `Last prediction: ${ts}`;
+
+    if (isConnected) publishNextRow();
+  }
+
+  // =========================
+  // CSV + Publish
+  // =========================
+  function loadCsvData() {
+    const fileInput = document.getElementById('csvFileInput');
+    if (!fileInput || fileInput.files.length === 0) {
+      alert('Select a CSV file.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      csvLines = e.target.result
+        .split('\n')
+        .slice(1)
+        .map(line => line.split(',').map(v => v.trim()))
+        .filter(arr => arr.length > 1);
+
+      if (isConnected) publishNextRow();
+    };
+    reader.readAsText(fileInput.files[0]);
+  }
+
+  function publishNextRow(skipTableCreation = false) {
+    if (!csvLines || csvLines.length === 0) return;
+
+    const row = csvLines.shift();
+    const afterSkip = row.slice(2);
+    const featureValues = afterSkip.slice(0, config.inputs.length);
+    const target = afterSkip[afterSkip.length - 1];
+
+    const dataObj = {};
+    config.inputs.forEach((input, i) => dataObj[input.name] = featureValues[i]);
+
+    const dataStr = JSON.stringify(dataObj);
+
+    client.publish(config.inputTopic, dataStr, (err) => {
+      if (err) return console.error(err);
+      if (!skipTableCreation) {
+        addRowToTable({
+          Timestamp: new Date().toLocaleString(),
+          Target: target,
+          Features: dataObj,
+          Predicted: '-'
+        });
+      }
+    });
+  }
+
+  // =========================
+  // Table
+  // =========================
+  function enforceMaxRows() {
+    const maxRows = parseInt(maxRowsSel.value, 10) || 500;
+    while (logTable.children.length >= maxRows) {
+      const old = logTable.firstElementChild;
+      if (old) stopGoldilocksMeter(old);
+      logTable.removeChild(old);
+    }
+  }
+
+  function addRowToTable(data) {
+    if (!data || !data.Timestamp || !data.Features) return;
+
+    const row = document.createElement('tr');
+    markRowCreated(row);
+
+    // IMPORTANT CHANGE:
+    // Hover must NOT start timing (no anchor, no focus time).
+    row.addEventListener('mouseenter', () => {
+      // Optional: if the panel is open and an anchor exists, update display.
+      if (row.getAttribute("data-meter-open") === "true") {
+        const anchorTs = parseInt(row.dataset.anchorTs || "0", 10);
+        const deltaNow = anchorTs ? (Date.now() - anchorTs) / 1000.0 : 0;
+        renderGoldilocksMeter(row, deltaNow);
+      }
+    });
+
+    // Start timing on first real interaction (click/tap anywhere in the row).
+    row.addEventListener('pointerdown', () => {
+      ensureAnchor(row, "click");
+      if (row.getAttribute("data-meter-open") === "true") startGoldilocksMeter(row);
+    }, { passive: true });
+
+    // Focus timing remains focus-based.
+    row.addEventListener('focusin', () => {
+      ensureAnchor(row, "focus");
+      focusStart(row);
+      if (row.getAttribute("data-meter-open") === "true") startGoldilocksMeter(row);
+    });
+    row.addEventListener('focusout', () => focusEnd(row));
+
+    row.appendChild(createCellText(data.Timestamp));
+    row.appendChild(createFeaturesCell(data.Features));
+    row.appendChild(createTargetCell(data.Target || '0', row));
+    row.appendChild(createCellText(data.Predicted || '-'));
+    row.appendChild(createStatusCell(row));
+    row.appendChild(createNoteCell(row));
+    row.appendChild(createVCell());
+
+    enforceMaxRows();
+    logTable.appendChild(row);
+    publishedRows.push(row);
+
+    applyTargetEditabilityRule(row);
+    renderVBadge(row, null);
+    updateCountsAndCharts();
+    updateKpisAndQuality();
+    applyFilters();
+  }
+
+  function createCellText(content) {
+    const td = document.createElement('td');
+    td.textContent = content;
+    return td;
+  }
+
+  function createFeaturesCell(features) {
+    const td = document.createElement('td');
+    const select = document.createElement('select');
+    Object.entries(features).forEach(([k, v]) => {
+      const opt = document.createElement('option');
+      opt.textContent = `${k}: ${v}`;
+      select.appendChild(opt);
+    });
+    td.appendChild(select);
+    return td;
+  }
+
+  function createTargetCell(value, row) {
+    const td = document.createElement('td');
+    const input = document.createElement('input');
+    input.className = 'target-input';
+    input.value = value;
+
+    input.addEventListener('input', () => recordEdit(row));
+    input.addEventListener('change', () => recordEdit(row));
+
+    td.appendChild(input);
+    return td;
+  }
+
+  function createStatusCell(row) {
+    const td = document.createElement('td');
+
+    row.setAttribute("data-meter-open", "false");
+
+    const wrap = document.createElement('div');
+    wrap.className = "statusWrap";
+
+    const radios = document.createElement('div');
+    radios.style.display = "flex";
+    radios.style.gap = "10px";
+    radios.style.alignItems = "center";
+    radios.style.flexWrap = "wrap";
+
+    function mk(label, value) {
+      const container = document.createElement('label');
+      container.style.display = "inline-flex";
+      container.style.alignItems = "center";
+      container.style.gap = "8px";
+      container.style.cursor = "pointer";
+      container.style.color = "var(--muted)";
+      container.style.fontSize = "12px";
+      container.style.fontWeight = "700";
+
+      const r = document.createElement('input');
+      r.type = "radio";
+      r.name = `status-${row.dataset.rowId}`;
+      r.value = value;
+
+      r.addEventListener('change', () => {
+        setRowStatus(row, value);
+        recordDecision(row, value);
+      });
+
+      container.appendChild(r);
+      const span = document.createElement('span');
+      span.textContent = label;
+      container.appendChild(span);
+      return container;
+    }
+
+    radios.appendChild(mk("OK", "ok"));
+    radios.appendChild(mk("Non-OK", "non-ok"));
+
+    const toggle = document.createElement('div');
+    toggle.className = "gToggle";
+    toggle.innerHTML = `
+      <div class="gToggleLeft">
+        <span class="gToggleBadge">Timing</span>
+        <span data-g-toggle-text>Show deliberation window</span>
+      </div>
+      <div class="gChevron"></div>
+    `;
+
+    toggle.addEventListener('click', () => {
+      const isOpen = row.getAttribute("data-meter-open") === "true";
+      const nextOpen = isOpen ? "false" : "true";
+      row.setAttribute("data-meter-open", nextOpen);
+
+      const t = toggle.querySelector('[data-g-toggle-text]');
+      if (t) t.textContent = isOpen ? "Show deliberation window" : "Hide deliberation window";
+
+      if (!isOpen) {
+        enableSpotlight(row);
+
+        // IMPORTANT CHANGE:
+        // Opening the panel does NOT start timing by itself.
+        // It will start when user clicks/focuses (ensureAnchor called there).
+        const anchorTs = parseInt(row.dataset.anchorTs || "0", 10);
+        const deltaNow = anchorTs ? (Date.now() - anchorTs) / 1000.0 : 0;
+
+        renderGoldilocksMeter(row, deltaNow);
+
+        if (row.dataset.anchorTs) startGoldilocksMeter(row);
+      } else {
+        stopGoldilocksMeter(row);
+        disableSpotlight();
+      }
+    });
+
+    const meter = document.createElement('div');
+    meter.className = "gmeter";
+    meter.innerHTML = `
+      <div class="gmeterTop">
+        <span class="pill">Δ: <span data-g-delta>0.00</span>s</span>
+        <span class="pill">window: <span data-g-win>0.00 to 0.00</span>s</span>
+        <span class="pill">β: <span data-g-beta>0.00</span></span>
+      </div>
+
+      <div class="gmeterTrack">
+        <div class="gmeterBand" data-g-band></div>
+        <div class="gmeterMarker" data-g-marker></div>
+        <div class="gmeterClick final" data-g-click style="display:none;"></div>
+      </div>
+
+      <div class="gmeterBottom">
+        <span>0s</span>
+        <span data-g-max>0.00s</span>
+      </div>
+
+      <div class="gmeterHint" data-g-hint>Click inside the row or focus an input to start timing.</div>
+
+      <div class="gcurve">
+        <div class="gcurveHead">
+          <span>Admission curve V(Δ)</span>
+          <span>0..1</span>
+        </div>
+        <svg class="gcurveSvg" viewBox="0 0 320 86" preserveAspectRatio="none">
+          <line class="gcurveGrid" x1="0" y1="1" x2="320" y2="1"></line>
+          <line class="gcurveGrid" x1="0" y1="43" x2="320" y2="43"></line>
+          <line class="gcurveGrid" x1="0" y1="85" x2="320" y2="85"></line>
+
+          <path class="gcurvePath" data-g-vpath d=""></path>
+
+          <line class="gcurveTick" data-g-ctick x1="0" y1="0" x2="0" y2="86" style="display:none;"></line>
+          <circle class="gcurveDot" data-g-dot cx="0" cy="85" r="4"></circle>
+          <line class="gcurveTickFinal" data-g-ftick x1="0" y1="0" x2="0" y2="86" style="display:none;"></line>
+        </svg>
+      </div>
+
+      <div class="gmeterAfter" data-g-after style="display:none;"></div>
+    `;
+
+    wrap.appendChild(radios);
+    wrap.appendChild(toggle);
+    wrap.appendChild(meter);
+    td.appendChild(wrap);
+
+    row._g = {
+      deltaEl: meter.querySelector('[data-g-delta]'),
+      winEl: meter.querySelector('[data-g-win]'),
+      betaEl: meter.querySelector('[data-g-beta]'),
+      bandEl: meter.querySelector('[data-g-band]'),
+      markerEl: meter.querySelector('[data-g-marker]'),
+      clickEl: meter.querySelector('[data-g-click]'),
+      maxEl: meter.querySelector('[data-g-max]'),
+      hintEl: meter.querySelector('[data-g-hint]'),
+      afterEl: meter.querySelector('[data-g-after]'),
+      toggleTextEl: toggle.querySelector('[data-g-toggle-text]'),
+
+      vPathEl: meter.querySelector('[data-g-vpath]'),
+      cTickEl: meter.querySelector('[data-g-ctick]'),
+      dotEl: meter.querySelector('[data-g-dot]'),
+      fTickEl: meter.querySelector('[data-g-ftick]')
+    };
+
+    renderGoldilocksMeter(row, 0);
+
+    return td;
+  }
+
+  function createNoteCell(row) {
+    const td = document.createElement('td');
+    const input = document.createElement('input');
+    input.className = 'txt';
+    input.placeholder = "Optional operator note";
+    input.addEventListener('input', () => recordEdit(row));
+    input.addEventListener('change', () => recordEdit(row));
+    td.appendChild(input);
+    return td;
+  }
+
+  function createVCell() {
+    const td = document.createElement('td');
+    td.innerHTML = `<span class="badge"><span class="dot"></span><span>-</span></span>`;
+    return td;
+  }
+
+  function setRowStatus(row, status) {
+    row.classList.remove('ok', 'non-ok');
+    if (status === 'ok') row.classList.add('ok');
+    if (status === 'non-ok') row.classList.add('non-ok');
+    applyTargetEditabilityRule(row);
+  }
+
+  function applyTargetEditabilityRule(row) {
+    const targetInput = row.querySelector('td:nth-child(3) input');
+    if (!targetInput) return;
+    targetInput.disabled = !(row.classList.contains('non-ok'));
+  }
+
+  // =========================
+  // Filtering
+  // =========================
+  function applyFilters() {
+    const mode = filterStatus.value;
+    const q = (searchBox.value || "").toLowerCase();
+
+    const rows = Array.from(logTable.querySelectorAll('tr'));
+    for (const r of rows) {
+      let show = true;
+
+      const decided = r.classList.contains('ok') || r.classList.contains('non-ok');
+      if (mode === 'ok') show = r.classList.contains('ok');
+      else if (mode === 'non-ok') show = r.classList.contains('non-ok');
+      else if (mode === 'undecided') show = !decided;
+
+      if (show && q) {
+        const ts = r.children[0]?.textContent || "";
+        const featuresText = Array.from(r.children[1]?.querySelectorAll('option') || []).map(o => o.textContent).join(" ");
+        const note = r.children[5]?.querySelector('input')?.value || "";
+        const all = (ts + " " + featuresText + " " + note).toLowerCase();
+        show = all.includes(q);
+      }
+
+      r.style.display = show ? "" : "none";
+    }
+  }
+
+  function togglePause() {
+    uiPaused = !uiPaused;
+    const btn = document.getElementById('pauseStream');
+    btn.textContent = uiPaused ? "Resume UI" : "Pause UI";
+    if (uiPaused) statusSubtitle.textContent = "UI paused (MQTT still connected).";
+    else statusSubtitle.textContent = isConnected ? "Connected." : "Disconnected.";
+  }
+
+  function clearTable() {
+    if (!confirm("Clear all rows and charts?")) return;
+
+    activeMeters.forEach((id) => cancelAnimationFrame(id));
+    activeMeters.clear();
+
+    disableSpotlight();
+
+    logTable.innerHTML = "";
+    publishedRows = [];
+    rowCounter = 0;
+
+    tTracePred.x = [];   tTracePred.y = [];
+    tTraceTarget.x = []; tTraceTarget.y = [];
+    tTraceErr.x = [];    tTraceErr.y = [];
+    vTrace.x = [];       vTrace.y = [];
+
+    Plotly.update('mainChart', { x: [[],[],[]], y: [[],[],[]] });
+    Plotly.update('vChart', { x: [[]], y: [[]] });
+    Plotly.update('barChart', { y: [[0,0,0]] });
+
+    updateCountsAndCharts();
+    updateKpisAndQuality();
+    chartHint.textContent = "-";
+  }
+
+  // =========================
+  // Charts
+  // =========================
+  function updateMainChart(timestamp, predictedValue, targetValue) {
+    tTracePred.x.push(timestamp);
+    tTracePred.y.push(predictedValue);
+
+    if (targetValue !== null && targetValue !== undefined && !isNaN(targetValue)) {
+      tTraceTarget.x.push(timestamp);
+      tTraceTarget.y.push(targetValue);
+      tTraceErr.x.push(timestamp);
+      tTraceErr.y.push(Math.abs(predictedValue - targetValue));
+    } else {
+      tTraceErr.x.push(timestamp);
+      tTraceErr.y.push(null);
+    }
+
+    trimSeries(tTracePred, MAX_POINTS);
+    trimSeries(tTraceTarget, MAX_POINTS);
+    trimSeries(tTraceErr, MAX_POINTS);
+
+    Plotly.update('mainChart', {
+      x: [tTracePred.x, tTraceTarget.x, tTraceErr.x],
+      y: [tTracePred.y, tTraceTarget.y, tTraceErr.y]
+    }, {});
+  }
+
+  function updateCountsAndCharts() {
+    const okCount = logTable.querySelectorAll('tr.ok').length;
+    const nonOkCount = logTable.querySelectorAll('tr.non-ok').length;
+    const undecided = logTable.querySelectorAll('tr:not(.ok):not(.non-ok)').length;
+
+    countsChip.textContent = `OK: ${okCount} • Non-OK: ${nonOkCount}`;
+    Plotly.update('barChart', { y: [[okCount, nonOkCount, undecided]] });
+  }
+
+  // =========================
+  // Export + recalibration
+  // =========================
+  function rowToExportObject(row) {
+    const ts = row.children[0]?.textContent || "";
+    const featuresSelect = row.children[1]?.querySelector('select');
+    const featuresList = featuresSelect ? Array.from(featuresSelect.options).map(o => o.textContent) : [];
+    const featuresObj = {};
+    for (const s of featuresList) {
+      const idx = s.indexOf(":");
+      if (idx > 0) featuresObj[s.slice(0, idx).trim()] = s.slice(idx + 1).trim();
+    }
+
+    const target = row.children[2]?.querySelector('input')?.value ?? "";
+    const predicted = row.children[3]?.textContent ?? "";
+    const status = row.classList.contains('non-ok') ? 'non-ok' : (row.classList.contains('ok') ? 'ok' : 'undecided');
+    const note = row.children[5]?.querySelector('input')?.value ?? "";
+
+    const V = parseFloat(row.dataset.vigilance || "NaN");
+    const delta = parseFloat(row.dataset.delta || "NaN");
+    const beta = parseFloat(row.dataset.beta || "NaN");
+    const zFast = parseFloat(row.dataset.zFast || "NaN");
+    const zSlow = parseFloat(row.dataset.zSlow || "NaN");
+    const sFast = parseFloat(row.dataset.sFast || "NaN");
+    const sSlow = parseFloat(row.dataset.sSlow || "NaN");
+
+    return {
+      Timestamp: ts,
+      Status: status,
+      Features: featuresObj,
+      FeaturesRaw: featuresList,
+      Target: target,
+      Predicted: predicted,
+      OperatorNote: note,
+      Vigilance: Number.isFinite(V) ? Number(V.toFixed(6)) : null,
+      Diagnostics: {
+        anchor_reason: row.dataset.anchorReason || null,
+        anchor_ts: row.dataset.anchorTs ? Number(row.dataset.anchorTs) : null,
+        decision_ts: row.dataset.decisionTs ? Number(row.dataset.decisionTs) : null,
+        delta_s: Number.isFinite(delta) ? Number(delta.toFixed(6)) : null,
+        beta: Number.isFinite(beta) ? Number(beta.toFixed(6)) : null,
+        z_fast: Number.isFinite(zFast) ? Number(zFast.toFixed(6)) : null,
+        z_slow: Number.isFinite(zSlow) ? Number(zSlow.toFixed(6)) : null,
+        s_fast: Number.isFinite(sFast) ? Number(sFast.toFixed(6)) : null,
+        s_slow: Number.isFinite(sSlow) ? Number(sSlow.toFixed(6)) : null,
+        edits: row.dataset.edits ? Number(row.dataset.edits) : 0,
+        focus_ms: row.dataset.focusMs ? Number(row.dataset.focusMs) : 0
+      }
+    };
+  }
+
+  function exportNonOkRows() {
+    const theta = getTheta();
+
+    const nonOkRows = Array.from(logTable.querySelectorAll('tr.non-ok'));
+    const eligible = nonOkRows.filter(r => {
+      const v = parseFloat(r.dataset.vigilance || "NaN");
+      return Number.isFinite(v) && v >= theta;
+    });
+
+    const payload = {
+      schema: "RAIL.non_ok_export.v4",
+      exportedAt: new Date().toISOString(),
+      theta,
+      params: {
+        tauMin: getTauMin(),
+        tauMax: getTauMax(),
+        k: getK(),
+        w_latency: getWLatency(),
+        w_features: getWFeatures(),
+        w_edits: getWEdits(),
+        w_focus: getWFocus()
+      },
+      counts: {
+        non_ok_total: nonOkRows.length,
+        non_ok_eligible: eligible.length
+      },
+      rows: eligible.map(rowToExportObject)
+    };
+
+    const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const fileName = `non-ok-rows_${stamp}.json`;
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+  }
+
+  function recalibrateModel() {
+    const theta = getTheta();
+
+    const eligible = Array.from(logTable.querySelectorAll('tr.non-ok'))
+      .filter(r => {
+        const v = parseFloat(r.dataset.vigilance || "NaN");
+        return Number.isFinite(v) && v >= theta;
+      })
+      .map(rowToExportObject);
+
+    if (eligible.length === 0) {
+      alert(`No eligible Non-OK rows (need V ≥ ${theta.toFixed(2)}).`);
+      return;
+    }
+
+    const topic = (config.outputTopic ? (config.outputTopic + "/recalibrate") : "recalibrate");
+    const payload = JSON.stringify({
+      schema: "RAIL.recalibration.v4",
+      createdAt: new Date().toISOString(),
+      theta,
+      rows: eligible
+    });
+
+    if (client && isConnected) {
+      client.publish(topic, payload, (err) => {
+        if (err) return alert("Failed to send recalibration payload.");
+        alert(`Recalibration payload sent (${eligible.length} rows).`);
+      });
+    } else {
+      console.log("Recalibration payload (not connected):", payload);
+      alert(`Not connected. Payload prepared (${eligible.length} rows). See console.`);
+    }
+  }
+
+  // =========================
+  // KPIs
+  // =========================
+  function updateKpisAndQuality() {
+    const allRows = Array.from(logTable.querySelectorAll('tr'));
+    const theta = getTheta();
+
+    kpiRows.textContent = String(allRows.length);
+
+    const eligible = Array.from(logTable.querySelectorAll('tr.non-ok')).filter(r => {
+      const v = parseFloat(r.dataset.vigilance || "NaN");
+      return Number.isFinite(v) && v >= theta;
+    });
+    kpiEligible.textContent = String(eligible.length);
+    qualityChip.textContent = `Eligible non-ok: ${eligible.length}`;
+
+    const decided = allRows.filter(r => r.classList.contains('ok') || r.classList.contains('non-ok'));
+    const vVals = decided
+      .map(r => parseFloat(r.dataset.vigilance || "NaN"))
+      .filter(v => Number.isFinite(v));
+    if (vVals.length === 0) kpiAvgV.textContent = "-";
+    else kpiAvgV.textContent = (vVals.reduce((a,b) => a+b, 0) / vVals.length).toFixed(2);
+
+    const deltas = decided
+      .map(r => parseFloat(r.dataset.delta || "NaN"))
+      .filter(x => Number.isFinite(x))
+      .sort((a,b) => a-b);
+    if (deltas.length === 0) kpiMedDelta.textContent = "-";
+    else {
+      const mid = Math.floor(deltas.length / 2);
+      const med = (deltas.length % 2) ? deltas[mid] : (deltas[mid - 1] + deltas[mid]) / 2;
+      kpiMedDelta.textContent = med.toFixed(2);
+    }
+  }
+
+  // =========================
+  // Modal expand
+  // =========================
+  function openModal(title, sub, sourceChartId) {
+    const modalBack = document.getElementById('modalBack');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalSub = document.getElementById('modalSub');
+    const modalChart = document.getElementById('modalChart');
+
+    modalTitle.textContent = title;
+    modalSub.textContent = sub;
+
+    modalBack.style.display = "flex";
+    modalChart.innerHTML = "";
+
+    const gd = document.getElementById(sourceChartId);
+    Plotly.newPlot('modalChart', gd.data, gd.layout, { responsive: true, displayModeBar: true });
+  }
+
+  function closeModal() {
+    document.getElementById('modalBack').style.display = "none";
+    document.getElementById('modalChart').innerHTML = "";
+  }
+
+  // Ensure schema badge matches current export schema
+  (function syncSchemaBadge() {
+    const el = document.getElementById('exportSchemaCode');
+    if (el) el.textContent = "RAIL.non_ok_export.v4";
+  })();
+</script>
+</body>
+</html>
