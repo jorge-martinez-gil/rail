@@ -204,8 +204,8 @@ All experiments use [River](https://riverml.xyz/) for online (single-pass) learn
 
 ```
 .
-├── app/                 # RAIL Console (browser, zero-build)
-├── experiments/      # Decay prevention experiment harness
+├── app/                      # RAIL Console (browser, zero-build)
+├── experiments/              # Decay prevention experiment harness
 ├── outputs/                  # Generated plots (600 DPI PNG)
 ├── _cache/                   # Downloaded dataset cache (auto-created)
 └── README.md
