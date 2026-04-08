@@ -15,7 +15,7 @@ The project ships two artifacts:
 | Component | File | Purpose |
 |---|---|---|
 | **RAIL Console** | `app.html` | Browser-based HITL dashboard for live validation, vigilance scoring, export, and one-click recalibration over MQTT |
-| **Decay Experiments** | `decay_experiments.py` | Reproducible simulation comparing four update policies (STATIC, ALWAYS, GATED, WEIGHTED) across four datasets |
+| **Decay Experiments** | `decay_experiments.py` | Reproducible simulation comparing the update policies across four datasets |
 
 ---
 
