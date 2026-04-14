@@ -1,6 +1,4 @@
 """
-honest_rail_one_run.py
-
 Single-run, self-contained evaluation script for RAIL against stronger baselines.
 
 Included policies
