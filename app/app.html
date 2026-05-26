@@ -715,6 +715,46 @@
       color: rgba(15,23,42,.78);
     }
 
+    .checkRow{
+      display:flex;
+      align-items:flex-start;
+      gap: 9px;
+      color: rgba(15,23,42,.78);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.35;
+      margin: 8px 0;
+    }
+    .checkRow input{
+      margin-top: 2px;
+      accent-color: var(--accent);
+    }
+    .activityStats{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .activityStat{
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.78);
+      border-radius: 12px;
+      padding: 8px 9px;
+    }
+    .activityStat span{
+      display:block;
+      color: rgba(15,23,42,.55);
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-bottom: 3px;
+    }
+    .activityStat b{
+      color: rgba(15,23,42,.88);
+      font-size: 15px;
+    }
+
     /* Row spotlight */
     tbody tr{ transition: opacity .12s ease, filter .12s ease; }
     #logTable.spotlight tbody tr{
@@ -771,6 +811,51 @@
 
         <div style="height:10px;"></div>
         <button id="recalibrateButton" class="btn primary" style="width:100%;">Recalibrate Model</button>
+      </div>
+
+      <div class="sideCard">
+        <h4>Publication activity</h4>
+        <div class="grid2">
+          <div class="field">
+            <label>Participant ID</label>
+            <input id="participantIdInput" type="text" placeholder="P001">
+          </div>
+          <div class="field">
+            <label>Condition</label>
+            <input id="studyConditionInput" type="text" placeholder="baseline / rail">
+          </div>
+        </div>
+        <div style="height:10px;"></div>
+        <div class="field">
+          <label>Task batch</label>
+          <input id="taskBatchInput" type="text" placeholder="pilot-1">
+        </div>
+        <div style="height:10px;"></div>
+        <label class="checkRow">
+          <input id="recordActivityToggle" type="checkbox">
+          <span>Record local user activity for study reporting</span>
+        </label>
+        <label class="checkRow">
+          <input id="includeRowValuesToggle" type="checkbox">
+          <span>Include row values in exported report</span>
+        </label>
+        <div class="hint">
+          Local only. The report aggregates decisions, timing, focus, edits, eligibility, and event counts. Free-text notes are summarized by length unless row values are included.
+        </div>
+        <div class="activityStats">
+          <div class="activityStat"><span>Status</span><b id="activityStatus">Off</b></div>
+          <div class="activityStat"><span>Events</span><b id="activityEvents">0</b></div>
+          <div class="activityStat"><span>Rows</span><b id="activityRows">0</b></div>
+          <div class="activityStat"><span>Decisions</span><b id="activityDecisions">0</b></div>
+        </div>
+        <div style="height:10px;"></div>
+        <button id="exportActivityButton" class="btn" style="width:100%;">Export Activity Report</button>
+        <div style="height:10px;"></div>
+        <button id="resetActivityButton" class="btn ghost" style="width:100%;">Reset Activity Log</button>
+        <div class="schemaBadge" title="Activity report schema used for publication reporting">
+          <span>Report schema</span>
+          <code>RAIL.activity_report.v1</code>
+        </div>
       </div>
 
       <div class="sideCard">
@@ -1006,10 +1091,32 @@
   const searchBox = document.getElementById('searchBox');
   const maxRowsSel = document.getElementById('maxRows');
 
+  const recordActivityToggle = document.getElementById('recordActivityToggle');
+  const includeRowValuesToggle = document.getElementById('includeRowValuesToggle');
+  const participantIdInput = document.getElementById('participantIdInput');
+  const studyConditionInput = document.getElementById('studyConditionInput');
+  const taskBatchInput = document.getElementById('taskBatchInput');
+  const activityStatus = document.getElementById('activityStatus');
+  const activityEvents = document.getElementById('activityEvents');
+  const activityRows = document.getElementById('activityRows');
+  const activityDecisions = document.getElementById('activityDecisions');
+
   let publishedRows = [];
   let csvLines = [];
   let rowCounter = 0;
   let uiPaused = false;
+
+  const activityLog = {
+    schema: "RAIL.activity_log.v1",
+    sessionId: makeSessionId(),
+    enabled: false,
+    startedAt: null,
+    stoppedAt: null,
+    eventSeq: 0,
+    maxEvents: 5000,
+    droppedEvents: 0,
+    events: []
+  };
 
   // =========================
   // Plotly
@@ -1075,6 +1182,16 @@
   document.getElementById('loadCsvButton').addEventListener('click', loadCsvData);
   document.getElementById('exportNonOkButton').addEventListener('click', exportNonOkRows);
   document.getElementById('recalibrateButton').addEventListener('click', recalibrateModel);
+  document.getElementById('exportActivityButton').addEventListener('click', exportActivityReport);
+  document.getElementById('resetActivityButton').addEventListener('click', resetActivityLog);
+  recordActivityToggle.addEventListener('change', () => setActivityRecording(recordActivityToggle.checked));
+  includeRowValuesToggle.addEventListener('change', () => {
+    recordActivity("row_values_export_toggle", { enabled: includeRowValuesToggle.checked });
+    updateActivityUi();
+  });
+  participantIdInput.addEventListener('change', () => recordActivity("study_metadata_changed", { field: "participant_id" }));
+  studyConditionInput.addEventListener('change', () => recordActivity("study_metadata_changed", { field: "condition" }));
+  taskBatchInput.addEventListener('change', () => recordActivity("study_metadata_changed", { field: "task_batch" }));
 
   document.getElementById('clearTable').addEventListener('click', clearTable);
   document.getElementById('pauseStream').addEventListener('click', togglePause);
@@ -1087,6 +1204,424 @@
   document.getElementById('resetMainChart').addEventListener('click', () => Plotly.relayout('mainChart', { 'xaxis.autorange': true, 'yaxis.autorange': true, 'yaxis2.autorange': true }));
   document.getElementById('closeModal').addEventListener('click', closeModal);
   document.getElementById('modalBack').addEventListener('click', (e) => { if (e.target.id === 'modalBack') closeModal(); });
+
+  // =========================
+  // Publication activity log
+  // =========================
+  function makeSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return `rail-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function isoFromMs(ms) {
+    const n = Number(ms);
+    return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : null;
+  }
+
+  function roundNum(value, digits = 6) {
+    if (value === "" || value === null || value === undefined) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Number(n.toFixed(digits));
+  }
+
+  function parseMaybeNumber(value) {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function truncateString(value, maxLen = 220) {
+    const s = String(value ?? "");
+    return s.length > maxLen ? `${s.slice(0, maxLen)}...` : s;
+  }
+
+  function sanitizeActivityDetails(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "number" || typeof value === "boolean") return value;
+    if (typeof value === "string") return truncateString(value);
+    if (Array.isArray(value)) return value.slice(0, 50).map(sanitizeActivityDetails);
+    if (typeof value === "object") {
+      const out = {};
+      for (const [k, v] of Object.entries(value).slice(0, 50)) {
+        out[k] = sanitizeActivityDetails(v);
+      }
+      return out;
+    }
+    return String(value);
+  }
+
+  function appendActivityEvent(type, details = {}, force = false) {
+    if (!force && !activityLog.enabled) return;
+
+    const event = {
+      id: ++activityLog.eventSeq,
+      at: new Date().toISOString(),
+      type,
+      details: sanitizeActivityDetails(details)
+    };
+
+    if (activityLog.events.length >= activityLog.maxEvents) {
+      activityLog.droppedEvents += 1;
+    } else {
+      activityLog.events.push(event);
+    }
+    updateActivityUi();
+  }
+
+  function recordActivity(type, details = {}) {
+    appendActivityEvent(type, details, false);
+  }
+
+  function setActivityRecording(enabled) {
+    const nowIso = new Date().toISOString();
+    if (enabled) {
+      activityLog.enabled = true;
+      if (!activityLog.startedAt) activityLog.startedAt = nowIso;
+      activityLog.stoppedAt = null;
+      appendActivityEvent("recording_started", {
+        include_row_values: includeRowValuesToggle.checked,
+        current_rows: logTable.querySelectorAll('tr').length,
+        study: studyMetadataSnapshot()
+      }, true);
+    } else {
+      appendActivityEvent("recording_stopped", {
+        current_rows: logTable.querySelectorAll('tr').length,
+        events_recorded: activityLog.events.length
+      }, true);
+      activityLog.enabled = false;
+      activityLog.stoppedAt = nowIso;
+    }
+    updateActivityUi();
+  }
+
+  function resetActivityLog() {
+    if (!confirm("Reset recorded activity events for this browser session?")) return;
+    const wasEnabled = activityLog.enabled;
+    activityLog.events = [];
+    activityLog.eventSeq = 0;
+    activityLog.droppedEvents = 0;
+    activityLog.startedAt = wasEnabled ? new Date().toISOString() : null;
+    activityLog.stoppedAt = null;
+    if (wasEnabled) {
+      appendActivityEvent("recording_reset", { current_rows: logTable.querySelectorAll('tr').length }, true);
+    }
+    updateActivityUi();
+  }
+
+  function updateActivityUi() {
+    const rowCount = logTable.querySelectorAll('tr').length;
+    const decisionCount = logTable.querySelectorAll('tr.ok, tr.non-ok').length;
+    activityStatus.textContent = activityLog.enabled ? "On" : "Off";
+    activityEvents.textContent = String(activityLog.events.length);
+    activityRows.textContent = String(rowCount);
+    activityDecisions.textContent = String(decisionCount);
+  }
+
+  function downloadBlob(fileName, content, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function countBy(items, keyFn) {
+    const out = {};
+    for (const item of items) {
+      const key = keyFn(item) ?? "unknown";
+      out[key] = (out[key] || 0) + 1;
+    }
+    return out;
+  }
+
+  function summarizeNumbers(values) {
+    const nums = values.filter(v => Number.isFinite(v)).sort((a, b) => a - b);
+    const n = nums.length;
+    if (!n) return { n: 0, mean: null, sd: null, min: null, q1: null, median: null, q3: null, max: null };
+    const mean = nums.reduce((a, b) => a + b, 0) / n;
+    const variance = n > 1 ? nums.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1) : 0;
+    const quantile = (p) => {
+      if (n === 1) return nums[0];
+      const idx = (n - 1) * p;
+      const lo = Math.floor(idx);
+      const hi = Math.ceil(idx);
+      const h = idx - lo;
+      return nums[lo] * (1 - h) + nums[hi] * h;
+    };
+    return {
+      n,
+      mean: roundNum(mean),
+      sd: roundNum(Math.sqrt(variance)),
+      min: roundNum(nums[0]),
+      q1: roundNum(quantile(0.25)),
+      median: roundNum(quantile(0.50)),
+      q3: roundNum(quantile(0.75)),
+      max: roundNum(nums[n - 1])
+    };
+  }
+
+  function activityParamsSnapshot() {
+    return {
+      theta: getTheta(),
+      tauMin: getTauMin(),
+      tauMax: getTauMax(),
+      k: getK(),
+      w_latency: getWLatency(),
+      w_features: getWFeatures(),
+      w_edits: getWEdits(),
+      w_focus: getWFocus()
+    };
+  }
+
+  function studyMetadataSnapshot() {
+    return {
+      participant_id: truncateString((participantIdInput.value || "").trim(), 80) || null,
+      condition: truncateString((studyConditionInput.value || "").trim(), 80) || null,
+      task_batch: truncateString((taskBatchInput.value || "").trim(), 80) || null
+    };
+  }
+
+  function rowToActivityObject(row, includeValues) {
+    const exported = rowToExportObject(row);
+    const status = exported.Status;
+    const targetNum = parseMaybeNumber(exported.Target);
+    const predictedNum = parseMaybeNumber(exported.Predicted);
+    const delta = parseMaybeNumber(row.dataset.delta);
+    const beta = parseMaybeNumber(row.dataset.beta);
+    const vigilance = parseMaybeNumber(row.dataset.vigilance);
+    const focusMs = parseMaybeNumber(row.dataset.focusMs) || 0;
+    const editCount = parseInt(row.dataset.edits || "0", 10) || 0;
+    const featureCount = exported.FeaturesRaw ? exported.FeaturesRaw.length : 0;
+    const theta = getTheta();
+
+    let windowClass = "unmeasured";
+    let windowLow = null;
+    let windowHigh = null;
+    if (Number.isFinite(delta) && Number.isFinite(beta)) {
+      windowLow = getTauMin() + beta;
+      windowHigh = getTauMax() + beta;
+      const scaledDelta = getWLatency() * delta;
+      if (scaledDelta < windowLow) windowClass = "too_fast";
+      else if (scaledDelta > windowHigh) windowClass = "too_slow";
+      else windowClass = "inside";
+    }
+
+    const absError = (targetNum !== null && predictedNum !== null)
+      ? Math.abs(predictedNum - targetNum)
+      : null;
+
+    const out = {
+      row_id: row.dataset.rowId || null,
+      source: row.dataset.source || "unknown",
+      created_at: isoFromMs(row.dataset.createdTs),
+      prediction_received_at: isoFromMs(row.dataset.predictionTs),
+      status,
+      decision: row.dataset.decision || null,
+      anchor_reason: row.dataset.anchorReason || null,
+      timing: {
+        anchor_at: isoFromMs(row.dataset.anchorTs),
+        decision_at: isoFromMs(row.dataset.decisionTs),
+        prediction_latency_ms: row.dataset.predictionTs && row.dataset.createdTs
+          ? roundNum(Number(row.dataset.predictionTs) - Number(row.dataset.createdTs), 3)
+          : null,
+        delta_s: roundNum(delta),
+        focus_ms: roundNum(focusMs, 3),
+        edit_count: editCount,
+        first_edit_at: isoFromMs(row.dataset.firstEditTs),
+        last_edit_at: isoFromMs(row.dataset.lastEditTs)
+      },
+      vigilance: {
+        score: roundNum(vigilance),
+        eligible_non_ok: status === "non-ok" && Number.isFinite(vigilance) && vigilance >= theta,
+        beta: roundNum(beta),
+        z_fast: roundNum(row.dataset.zFast),
+        z_slow: roundNum(row.dataset.zSlow),
+        s_fast: roundNum(row.dataset.sFast),
+        s_slow: roundNum(row.dataset.sSlow),
+        window_class: windowClass,
+        window_low_s: roundNum(windowLow),
+        window_high_s: roundNum(windowHigh)
+      },
+      content_summary: {
+        feature_count: featureCount,
+        note_length: String(exported.OperatorNote || "").length,
+        target_numeric: targetNum !== null,
+        predicted_numeric: predictedNum !== null,
+        abs_error: roundNum(absError)
+      }
+    };
+
+    if (includeValues) {
+      out.values = {
+        features: exported.Features,
+        target: exported.Target,
+        predicted: exported.Predicted,
+        operator_note: exported.OperatorNote
+      };
+    }
+
+    return out;
+  }
+
+  function buildActivityAggregate(rows, events) {
+    const decided = rows.filter(r => r.status === "ok" || r.status === "non-ok");
+    const eligibleNonOk = rows.filter(r => r.vigilance.eligible_non_ok);
+    const rate = (n, d) => d ? roundNum(n / d) : null;
+
+    return {
+      rows: {
+        total: rows.length,
+        decided: decided.length,
+        ok: rows.filter(r => r.status === "ok").length,
+        non_ok: rows.filter(r => r.status === "non-ok").length,
+        undecided: rows.filter(r => r.status === "undecided").length,
+        eligible_non_ok: eligibleNonOk.length,
+        decision_rate: rate(decided.length, rows.length),
+        eligible_non_ok_rate: rate(eligibleNonOk.length, rows.filter(r => r.status === "non-ok").length)
+      },
+      distributions: {
+        source: countBy(rows, r => r.source),
+        status: countBy(rows, r => r.status),
+        anchor_reason: countBy(rows, r => r.anchor_reason || "none"),
+        window_class: countBy(rows, r => r.vigilance.window_class)
+      },
+      timing: {
+        delta_s: summarizeNumbers(rows.map(r => r.timing.delta_s)),
+        focus_ms: summarizeNumbers(rows.map(r => r.timing.focus_ms)),
+        edit_count: summarizeNumbers(rows.map(r => r.timing.edit_count)),
+        prediction_latency_ms: summarizeNumbers(rows.map(r => r.timing.prediction_latency_ms))
+      },
+      vigilance: {
+        score: summarizeNumbers(rows.map(r => r.vigilance.score)),
+        beta: summarizeNumbers(rows.map(r => r.vigilance.beta))
+      },
+      prediction_error: {
+        abs_error: summarizeNumbers(rows.map(r => r.content_summary.abs_error))
+      },
+      events: {
+        total: events.length,
+        dropped: activityLog.droppedEvents,
+        by_type: countBy(events, e => e.type)
+      }
+    };
+  }
+
+  function rowsToActivityCsv(rows) {
+    const headers = [
+      "participant_id", "condition", "task_batch",
+      "row_id", "source", "status", "decision", "created_at", "prediction_received_at",
+      "anchor_reason", "delta_s", "focus_ms", "edit_count", "vigilance",
+      "eligible_non_ok", "window_class", "feature_count", "note_length", "abs_error"
+    ];
+    const study = studyMetadataSnapshot();
+    const csvEscape = (v) => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+    };
+    const lines = rows.map(r => [
+      study.participant_id,
+      study.condition,
+      study.task_batch,
+      r.row_id,
+      r.source,
+      r.status,
+      r.decision,
+      r.created_at,
+      r.prediction_received_at,
+      r.anchor_reason,
+      r.timing.delta_s,
+      r.timing.focus_ms,
+      r.timing.edit_count,
+      r.vigilance.score,
+      r.vigilance.eligible_non_ok,
+      r.vigilance.window_class,
+      r.content_summary.feature_count,
+      r.content_summary.note_length,
+      r.content_summary.abs_error
+    ].map(csvEscape).join(","));
+    return `${headers.join(",")}\n${lines.join("\n")}\n`;
+  }
+
+  function exportActivityReport() {
+    recordActivity("activity_report_exported", {
+      rows: logTable.querySelectorAll('tr').length,
+      include_row_values: includeRowValuesToggle.checked,
+      study: studyMetadataSnapshot()
+    });
+
+    const includeValues = includeRowValuesToggle.checked;
+    const rows = Array.from(logTable.querySelectorAll('tr')).map(row => rowToActivityObject(row, includeValues));
+    const events = activityLog.events.slice();
+    const payload = {
+      schema: "RAIL.activity_report.v1",
+      exportedAt: new Date().toISOString(),
+      session: {
+        session_id: activityLog.sessionId,
+        study: studyMetadataSnapshot(),
+        recording_started_at: activityLog.startedAt,
+        recording_stopped_at: activityLog.stoppedAt,
+        recording_enabled_at_export: activityLog.enabled,
+        row_values_included: includeValues,
+        local_only: true
+      },
+      params: activityParamsSnapshot(),
+      aggregate: buildActivityAggregate(rows, events),
+      rows,
+      events
+    };
+
+    const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    downloadBlob(`rail-activity-report_${stamp}.json`, JSON.stringify(payload, null, 2), "application/json");
+    downloadBlob(`rail-activity-rows_${stamp}.csv`, rowsToActivityCsv(rows), "text/csv");
+    updateActivityUi();
+  }
+
+  function parseCsvRows(text) {
+    const rows = [];
+    let row = [];
+    let cell = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+
+      if (inQuotes) {
+        if (ch === '"' && next === '"') {
+          cell += '"';
+          i += 1;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          cell += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(cell.trim());
+        cell = "";
+      } else if (ch === '\n') {
+        row.push(cell.trim());
+        rows.push(row);
+        row = [];
+        cell = "";
+      } else if (ch !== '\r') {
+        cell += ch;
+      }
+    }
+
+    if (cell.length > 0 || row.length > 0) {
+      row.push(cell.trim());
+      rows.push(row);
+    }
+
+    return rows.filter(r => r.some(v => v !== ""));
+  }
 
   // =========================
   // Vigilance params
@@ -1354,6 +1889,9 @@
   // =========================
   function markRowCreated(row) {
     row.dataset.rowId = `row-${rowCounter++}`;
+    row.dataset.createdTs = String(Date.now());
+    row.dataset.predictionTs = "";
+    row.dataset.source = "unknown";
 
     row.dataset.anchorTs = "";
     row.dataset.anchorReason = "";
@@ -1363,6 +1901,8 @@
     row.dataset.edits = "0";
     row.dataset.focusMs = "0";
     row.dataset.focusStart = "";
+    row.dataset.firstEditTs = "";
+    row.dataset.lastEditTs = "";
 
     row.dataset.delta = "";
     row.dataset.beta = "";
@@ -1383,10 +1923,14 @@
     row.dataset.anchorReason = reason;
     row.setAttribute("data-anchored", "true");
     renderVBadge(row, null);
+    recordActivity("row_anchor", { row_id: row.dataset.rowId, reason });
   }
 
   function focusStart(row) {
-    if (!row.dataset.focusStart) row.dataset.focusStart = String(Date.now());
+    if (!row.dataset.focusStart) {
+      row.dataset.focusStart = String(Date.now());
+      recordActivity("row_focus_started", { row_id: row.dataset.rowId });
+    }
   }
 
   function focusEnd(row) {
@@ -1396,10 +1940,21 @@
     const prev = parseInt(row.dataset.focusMs || "0", 10);
     row.dataset.focusMs = String(prev + (now - start));
     row.dataset.focusStart = "";
+    recordActivity("row_focus_ended", {
+      row_id: row.dataset.rowId,
+      focus_interval_ms: now - start,
+      focus_total_ms: Number(row.dataset.focusMs)
+    });
   }
 
   function recordEdit(row) {
     row.dataset.edits = String(parseInt(row.dataset.edits || "0", 10) + 1);
+    const now = Date.now();
+    if (!row.dataset.firstEditTs) {
+      row.dataset.firstEditTs = String(now);
+      recordActivity("row_first_edit", { row_id: row.dataset.rowId });
+    }
+    row.dataset.lastEditTs = String(now);
   }
 
   // IMPORTANT CHANGE:
@@ -1412,8 +1967,14 @@
     if (!row.dataset.anchorTs) {
       // No interaction started timing, so keep V empty.
       renderVBadge(row, null);
+      recordActivity("row_decision", {
+        row_id: row.dataset.rowId,
+        decision: decisionValue,
+        measured: false
+      });
       updateCountsAndCharts();
       updateKpisAndQuality();
+      updateActivityUi();
       applyFilters();
       return;
     }
@@ -1448,6 +2009,15 @@
 
     updateCountsAndCharts();
     updateKpisAndQuality();
+    recordActivity("row_decision", {
+      row_id: row.dataset.rowId,
+      decision: decisionValue,
+      measured: true,
+      delta_s: roundNum(row.dataset.delta),
+      vigilance: roundNum(row.dataset.vigilance),
+      eligible_non_ok: row.classList.contains('non-ok') && parseFloat(row.dataset.vigilance || "NaN") >= getTheta()
+    });
+    updateActivityUi();
     applyFilters();
   }
 
@@ -1634,6 +2204,7 @@
   }
 
   function loadConfig() {
+    recordActivity("config_picker_opened");
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = '.json';
@@ -1645,14 +2216,20 @@
           config = JSON.parse(event.target.result);
           if (!validateConfig(config)) {
             alert('Invalid config. Required: brokerURL, inputTopic, outputTopic, inputs.');
+            recordActivity("config_invalid");
             return;
           }
+          recordActivity("config_loaded", {
+            input_count: Array.isArray(config.inputs) ? config.inputs.length : 0,
+            has_output_topic: Boolean(config.outputTopic)
+          });
           statusTitle.textContent = "Connecting...";
           statusSubtitle.textContent = `Broker: ${config.brokerURL}`;
           brokerChip.textContent = `Broker: ${config.brokerURL}`;
           connectToBroker();
         } catch (e) {
           alert('Failed to read config: ' + e.message);
+          recordActivity("config_read_failed", { message: e.message });
         }
       };
       reader.readAsText(file);
@@ -1661,6 +2238,9 @@
   }
 
   function connectToBroker() {
+    recordActivity("broker_connect_requested", {
+      input_count: Array.isArray(config.inputs) ? config.inputs.length : 0
+    });
     client = mqtt.connect(config.brokerURL);
 
     client.on('connect', () => {
@@ -1671,6 +2251,10 @@
 
       const dynamicTopic = config.inputTopic + '-';
       client.subscribe([config.outputTopic, dynamicTopic, config.inputTopic]);
+      recordActivity("broker_connected", {
+        subscribed_output: Boolean(config.outputTopic),
+        subscribed_dynamic_input: Boolean(config.inputTopic)
+      });
     });
 
     client.on('message', onMessage);
@@ -1679,6 +2263,7 @@
       statusTitle.textContent = "Error";
       statusSubtitle.textContent = err.message || "Broker error";
       console.error(err);
+      recordActivity("broker_error", { message: err && err.message ? err.message : String(err) });
     });
 
     client.on('close', () => {
@@ -1686,10 +2271,12 @@
       statusTitle.textContent = "Disconnected";
       statusSubtitle.textContent = "Connection closed.";
       document.getElementById('disconnectButton').disabled = true;
+      recordActivity("broker_closed");
     });
   }
 
   function disconnectFromBroker() {
+    recordActivity("broker_disconnect_requested");
     if (client) client.end();
   }
 
@@ -1714,11 +2301,13 @@
       Timestamp: new Date().toLocaleString(),
       Target: '0',
       Features: {},
-      Predicted: '-'
+      Predicted: '-',
+      Source: 'dynamic'
     };
 
     Object.keys(data).forEach(k => rowData.Features[k] = data[k]);
     addRowToTable(rowData);
+    recordActivity("dynamic_row_received", { feature_count: Object.keys(data).length });
 
     if (isConnected) publishNextRow(true);
   }
@@ -1729,6 +2318,7 @@
 
     const predCell = row.querySelector('td:nth-child(4)');
     predCell.textContent = medianValue;
+    row.dataset.predictionTs = String(Date.now());
 
     const ts = row.querySelector('td:first-child')?.textContent || new Date().toLocaleString();
     const targetInput = row.querySelector('td:nth-child(3) input');
@@ -1736,6 +2326,11 @@
 
     updateMainChart(ts, medianValue, targetVal);
     chartHint.textContent = `Last prediction: ${ts}`;
+    recordActivity("prediction_received", {
+      row_id: row.dataset.rowId,
+      target_numeric: Number.isFinite(targetVal),
+      predicted_numeric: Number.isFinite(parseFloat(medianValue))
+    });
 
     if (isConnected) publishNextRow();
   }
@@ -1752,12 +2347,18 @@
 
     const reader = new FileReader();
     reader.onload = e => {
-      csvLines = e.target.result
-        .split('\n')
-        .slice(1)
-        .map(line => line.split(',').map(v => v.trim()))
-        .filter(arr => arr.length > 1);
+      try {
+        csvLines = parseCsvRows(e.target.result).slice(1).filter(arr => arr.length > 1);
+      } catch (err) {
+        alert(`Failed to parse CSV: ${err.message || err}`);
+        recordActivity("csv_parse_failed", { message: err.message || String(err) });
+        return;
+      }
 
+      recordActivity("csv_loaded", {
+        row_count: csvLines.length,
+        byte_length: e.target.result.length
+      });
       if (isConnected) publishNextRow();
     };
     reader.readAsText(fileInput.files[0]);
@@ -1777,13 +2378,21 @@
     const dataStr = JSON.stringify(dataObj);
 
     client.publish(config.inputTopic, dataStr, (err) => {
-      if (err) return console.error(err);
+      if (err) {
+        recordActivity("csv_row_publish_failed", { message: err.message || String(err) });
+        return console.error(err);
+      }
       if (!skipTableCreation) {
         addRowToTable({
           Timestamp: new Date().toLocaleString(),
           Target: target,
           Features: dataObj,
-          Predicted: '-'
+          Predicted: '-',
+          Source: 'csv'
+        });
+        recordActivity("csv_row_published", {
+          remaining_rows: csvLines.length,
+          feature_count: Object.keys(dataObj).length
         });
       }
     });
@@ -1796,7 +2405,10 @@
     const maxRows = parseInt(maxRowsSel.value, 10) || 500;
     while (logTable.children.length >= maxRows) {
       const old = logTable.firstElementChild;
-      if (old) stopGoldilocksMeter(old);
+      if (old) {
+        recordActivity("row_removed_by_limit", { row_id: old.dataset.rowId, max_rows: maxRows });
+        stopGoldilocksMeter(old);
+      }
       logTable.removeChild(old);
     }
   }
@@ -1806,6 +2418,7 @@
 
     const row = document.createElement('tr');
     markRowCreated(row);
+    row.dataset.source = data.Source || "unknown";
 
     // IMPORTANT CHANGE:
     // Hover must NOT start timing (no anchor, no focus time).
@@ -1848,6 +2461,12 @@
     renderVBadge(row, null);
     updateCountsAndCharts();
     updateKpisAndQuality();
+    recordActivity("row_created", {
+      row_id: row.dataset.rowId,
+      source: row.dataset.source,
+      feature_count: Object.keys(data.Features || {}).length
+    });
+    updateActivityUi();
     applyFilters();
   }
 
@@ -1940,6 +2559,10 @@
       const isOpen = row.getAttribute("data-meter-open") === "true";
       const nextOpen = isOpen ? "false" : "true";
       row.setAttribute("data-meter-open", nextOpen);
+      recordActivity("timing_panel_toggled", {
+        row_id: row.dataset.rowId,
+        open: nextOpen === "true"
+      });
 
       const t = toggle.querySelector('[data-g-toggle-text]');
       if (t) t.textContent = isOpen ? "Show deliberation window" : "Hide deliberation window";
@@ -2097,10 +2720,12 @@
     btn.textContent = uiPaused ? "Resume UI" : "Pause UI";
     if (uiPaused) statusSubtitle.textContent = "UI paused (MQTT still connected).";
     else statusSubtitle.textContent = isConnected ? "Connected." : "Disconnected.";
+    recordActivity("ui_pause_toggled", { paused: uiPaused });
   }
 
   function clearTable() {
     if (!confirm("Clear all rows and charts?")) return;
+    recordActivity("table_cleared", { rows: logTable.querySelectorAll('tr').length });
 
     activeMeters.forEach((id) => cancelAnimationFrame(id));
     activeMeters.clear();
@@ -2122,6 +2747,7 @@
 
     updateCountsAndCharts();
     updateKpisAndQuality();
+    updateActivityUi();
     chartHint.textContent = "-";
   }
 
@@ -2240,6 +2866,10 @@
       },
       rows: eligible.map(rowToExportObject)
     };
+    recordActivity("non_ok_exported", {
+      non_ok_total: nonOkRows.length,
+      non_ok_eligible: eligible.length
+    });
 
     const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
     const fileName = `non-ok-rows_${stamp}.json`;
@@ -2263,6 +2893,7 @@
       .map(rowToExportObject);
 
     if (eligible.length === 0) {
+      recordActivity("recalibration_blocked_empty", { theta });
       alert(`No eligible Non-OK rows (need V ≥ ${theta.toFixed(2)}).`);
       return;
     }
@@ -2270,18 +2901,24 @@
     const topic = (config.outputTopic ? (config.outputTopic + "/recalibrate") : "recalibrate");
     const payload = JSON.stringify({
       schema: "RAIL.recalibration.v4",
-      createdAt: new Date().toISOString(),
+      sentAt: new Date().toISOString(),
       theta,
       rows: eligible
     });
+    recordActivity("recalibration_prepared", { eligible_rows: eligible.length });
 
     if (client && isConnected) {
       client.publish(topic, payload, (err) => {
-        if (err) return alert("Failed to send recalibration payload.");
+        if (err) {
+          recordActivity("recalibration_send_failed", { message: err.message || String(err) });
+          return alert("Failed to send recalibration payload.");
+        }
+        recordActivity("recalibration_sent", { eligible_rows: eligible.length });
         alert(`Recalibration payload sent (${eligible.length} rows).`);
       });
     } else {
       console.log("Recalibration payload (not connected):", payload);
+      recordActivity("recalibration_not_sent", { eligible_rows: eligible.length });
       alert(`Not connected. Payload prepared (${eligible.length} rows). See console.`);
     }
   }
@@ -2349,6 +2986,7 @@
   (function syncSchemaBadge() {
     const el = document.getElementById('exportSchemaCode');
     if (el) el.textContent = "RAIL.non_ok_export.v4";
+    updateActivityUi();
   })();
 </script>
 </body>

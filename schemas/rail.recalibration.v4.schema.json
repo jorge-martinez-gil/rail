@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorge-martinez-gil/rail/schemas/rail.recalibration.v4.schema.json",
+  "title": "RAIL Recalibration Payload v4",
+  "type": "object",
+  "required": ["schema", "sentAt", "theta", "rows"],
+  "properties": {
+    "schema": {
+      "const": "RAIL.recalibration.v4"
+    },
+    "sentAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "theta": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$ref": "rail.non_ok_export.v4.schema.json#/properties/rows/items"
+      }
+    }
+  },
+  "additionalProperties": true
+}

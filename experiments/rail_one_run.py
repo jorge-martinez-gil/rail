@@ -43,6 +43,13 @@ from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import f1_score
 from sklearn.preprocessing import StandardScaler
 
+try:
+    from .rail_core import AdmissionParams as CoreAdmissionParams
+    from .rail_core import admission_diagnostics
+except ImportError:
+    from rail_core import AdmissionParams as CoreAdmissionParams
+    from rail_core import admission_diagnostics
+
 EPS = 1e-12
 
 
@@ -169,19 +176,28 @@ def score_margin_gated(probs: np.ndarray) -> float:
 
 def rail_components(telemetry: Telemetry, cfg: PolicyConfig) -> Dict[str, float]:
     delta = float(telemetry.decision_time_s - telemetry.anchor_time_s)
-    beta = (
-        cfg.w_f * float(telemetry.num_features_shown)
-        + cfg.w_e * float(telemetry.edit_count)
-        + cfg.w_s * float(telemetry.focus_time_s)
+    diagnostics = admission_diagnostics(
+        delta_sec=delta,
+        num_features=telemetry.num_features_shown,
+        edit_count=telemetry.edit_count,
+        focus_seconds=telemetry.focus_time_s,
+        params=CoreAdmissionParams(
+            tau_min=cfg.tau_min,
+            tau_max=cfg.tau_max,
+            k=cfg.k,
+            theta=cfg.theta,
+            w_delta=cfg.w_delta,
+            w_features=cfg.w_f,
+            w_edits=cfg.w_e,
+            w_focus=cfg.w_s,
+        ),
     )
-    s_fast = 1.0 / (1.0 + math.exp(-cfg.k * (cfg.w_delta * delta - (cfg.tau_min + beta))))
-    s_slow = 1.0 / (1.0 + math.exp(-cfg.k * ((cfg.tau_max + beta) - cfg.w_delta * delta)))
     return {
-        "score": float(s_fast * s_slow),
+        "score": diagnostics["score"],
         "delta": delta,
-        "beta": beta,
-        "s_fast": s_fast,
-        "s_slow": s_slow,
+        "beta": diagnostics["beta"],
+        "s_fast": diagnostics["s_fast"],
+        "s_slow": diagnostics["s_slow"],
     }
 
 

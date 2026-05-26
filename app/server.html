@@ -54,9 +54,8 @@
             return (values.length % 2 !== 0) ? values[mid] : ((values[mid - 1] + values[mid]) / 2).toFixed(2);
         }
 
-        // Connect to the MQTT broker
-		// 	wss://broker.hivemq.com:8884/mqtt
-        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt'); // Normal MQTT connection
+        // Connect to a local WebSocket-enabled MQTT broker.
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
 
         // HTML elements

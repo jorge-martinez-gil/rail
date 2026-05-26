@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorge-martinez-gil/rail/schemas/rail.activity_report.v1.schema.json",
+  "title": "RAIL Activity Report v1",
+  "type": "object",
+  "required": ["schema", "exportedAt", "session", "params", "aggregate", "rows", "events"],
+  "properties": {
+    "schema": {
+      "const": "RAIL.activity_report.v1"
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session": {
+      "type": "object",
+      "required": ["session_id", "recording_enabled_at_export", "row_values_included", "local_only"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "study": {
+          "type": "object",
+          "properties": {
+            "participant_id": { "type": ["string", "null"] },
+            "condition": { "type": ["string", "null"] },
+            "task_batch": { "type": ["string", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "recording_started_at": { "type": ["string", "null"], "format": "date-time" },
+        "recording_stopped_at": { "type": ["string", "null"], "format": "date-time" },
+        "recording_enabled_at_export": { "type": "boolean" },
+        "row_values_included": { "type": "boolean" },
+        "local_only": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "params": {
+      "type": "object",
+      "required": ["theta", "tauMin", "tauMax", "k"],
+      "properties": {
+        "theta": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tauMin": { "type": "number", "minimum": 0 },
+        "tauMax": { "type": "number", "minimum": 0 },
+        "k": { "type": "number", "exclusiveMinimum": 0 },
+        "w_latency": { "type": "number", "minimum": 0 },
+        "w_features": { "type": "number", "minimum": 0 },
+        "w_edits": { "type": "number", "minimum": 0 },
+        "w_focus": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "aggregate": {
+      "type": "object",
+      "required": ["rows", "distributions", "timing", "vigilance", "events"],
+      "additionalProperties": true
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["row_id", "source", "status", "timing", "vigilance", "content_summary"],
+        "properties": {
+          "row_id": { "type": ["string", "null"] },
+          "source": { "type": "string" },
+          "status": { "enum": ["ok", "non-ok", "undecided"] },
+          "decision": { "type": ["string", "null"] },
+          "anchor_reason": { "type": ["string", "null"] },
+          "timing": {
+            "type": "object",
+            "properties": {
+              "anchor_at": { "type": ["string", "null"], "format": "date-time" },
+              "decision_at": { "type": ["string", "null"], "format": "date-time" },
+              "prediction_latency_ms": { "type": ["number", "null"] },
+              "delta_s": { "type": ["number", "null"] },
+              "focus_ms": { "type": ["number", "null"] },
+              "edit_count": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": true
+          },
+          "vigilance": {
+            "type": "object",
+            "properties": {
+              "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "eligible_non_ok": { "type": "boolean" },
+              "window_class": { "enum": ["inside", "too_fast", "too_slow", "unmeasured"] }
+            },
+            "additionalProperties": true
+          },
+          "content_summary": {
+            "type": "object",
+            "properties": {
+              "feature_count": { "type": "integer", "minimum": 0 },
+              "note_length": { "type": "integer", "minimum": 0 },
+              "abs_error": { "type": ["number", "null"] }
+            },
+            "additionalProperties": true
+          },
+          "values": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "at", "type", "details"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 1 },
+          "at": { "type": "string", "format": "date-time" },
+          "type": { "type": "string" },
+          "details": {}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -52,6 +52,33 @@ from river import linear_model, compose
 from river import optim
 from river import preprocessing as rpre
 
+try:
+    from .rail_core import (
+        AdmissionParams as CoreAdmissionParams,
+        admission_score as core_admission_score,
+        sigmoid as core_sigmoid,
+    )
+    from .publication_artifacts import (
+        configure_matplotlib,
+        method_color,
+        method_label,
+        save_publication_figure,
+        write_markdown_table,
+    )
+except ImportError:
+    from rail_core import (
+        AdmissionParams as CoreAdmissionParams,
+        admission_score as core_admission_score,
+        sigmoid as core_sigmoid,
+    )
+    from publication_artifacts import (
+        configure_matplotlib,
+        method_color,
+        method_label,
+        save_publication_figure,
+        write_markdown_table,
+    )
+
 warnings.filterwarnings("ignore")
 
 # ============================================================
@@ -63,6 +90,7 @@ CACHEDIR = Path("_cache")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 CACHEDIR.mkdir(parents=True, exist_ok=True)
 
+configure_matplotlib()
 plt.rcParams.update(
     {
         "figure.dpi":     160,
@@ -125,8 +153,7 @@ def encode_binary_labels_to_01_str(y: np.ndarray) -> Tuple[np.ndarray, Dict[str,
 
 def save_png(fig, path: Path) -> None:
     fig.tight_layout()
-    fig.savefig(path, format="png", dpi=600, bbox_inches="tight")
-    plt.close(fig)
+    save_publication_figure(fig, path)
 
 
 # ============================================================
@@ -134,7 +161,7 @@ def save_png(fig, path: Path) -> None:
 # ============================================================
 
 def sigmoid(z: float) -> float:
-    return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, z))))
+    return core_sigmoid(z)
 
 
 @dataclass
@@ -159,10 +186,22 @@ class AdmissionParams:
 def admission_score(
     delta_sec: float, nf: int, ne: int, sf: float, p: AdmissionParams
 ) -> float:
-    beta   = p.w_f * nf + p.w_e * ne + p.w_s * sf
-    s_fast = sigmoid(p.k * (p.w_delta * delta_sec - (p.tau_min + beta)))
-    s_slow = sigmoid(p.k * ((p.tau_max + beta) - p.w_delta * delta_sec))
-    return s_fast * s_slow
+    return core_admission_score(
+        delta_sec=delta_sec,
+        num_features=nf,
+        edit_count=ne,
+        focus_seconds=sf,
+        params=CoreAdmissionParams(
+            tau_min=p.tau_min,
+            tau_max=p.tau_max,
+            k=p.k,
+            theta=p.theta,
+            w_delta=p.w_delta,
+            w_features=p.w_f,
+            w_edits=p.w_e,
+            w_focus=p.w_s,
+        ),
+    )
 
 
 # ============================================================
@@ -873,13 +912,15 @@ def write_ae_outputs(
             vals = dataset_to_ae[dataset][policy]
             mean = vals["ae_mean"]
             std  = vals["ae_std"]
-            pretty.loc[POLICY_LABELS[policy], dataset] = f"{mean:.2f} ± {std:.2f}"
+            pretty.loc[POLICY_LABELS[policy], dataset] = f"{mean:.2f} +/- {std:.2f}"
             row[f"{dataset}_mean"] = mean
             row[f"{dataset}_std"]  = std
         numeric_rows.append(row)
 
+    pretty.index.name = "Policy"
     pretty.to_csv(outdir / "table_ae_pretty.csv")
     pd.DataFrame(numeric_rows).to_csv(outdir / "table_ae_numeric.csv", index=False)
+    write_markdown_table(pretty.reset_index(), outdir / "table_ae.md")
 
     lines = [
         "\\begin{table}[t]",
@@ -925,8 +966,9 @@ def plot_decay_curves_pub(
         else:
             y, s, ylab = a["bal_mean"], a["bal_std"], "Balanced Accuracy"
 
-        ax.plot(x, y, linewidth=2.0, label=a["policy"])
-        ax.fill_between(x, y - s, y + s, alpha=0.18)
+        color = method_color(a["policy"])
+        ax.plot(x, y, linewidth=2.0, label=method_label(a["policy"]), color=color)
+        ax.fill_between(x, y - s, y + s, alpha=0.18, color=color)
 
     ax.set_title(title)
     ax.set_xlabel("Recalibration step")

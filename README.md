@@ -8,7 +8,7 @@
 </h1>
 
 <p>
-  <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
   <img src="https://img.shields.io/badge/MQTT-Enabled-660066?style=for-the-badge&logo=eclipse-mosquitto&logoColor=white" alt="MQTT"/>
   <img src="https://img.shields.io/badge/Online%20Learning-River-00BFA5?style=for-the-badge" alt="River"/>
   <img src="https://img.shields.io/badge/License-See%20File-lightgrey?style=for-the-badge" alt="License"/>
@@ -21,7 +21,7 @@
 
 <p>
 RAIL is a framework for gating online model recalibration through <em>operator attention quality</em>.<br/>
-It ships a <strong>live browser console</strong> for real-time prediction validation and a <strong>reproducible experiment harness</strong> that quantifies decay prevention across four real-world datasets.
+It ships a <strong>live browser console</strong> for real-time prediction validation and a <strong>publication-oriented experiment harness</strong> that separates real-data evidence from self-contained benchmark-like stress tests.
 </p>
 
 </div>
@@ -33,6 +33,7 @@ It ships a <strong>live browser console</strong> for real-time prediction valida
 - [Motivation](#-motivation)
 - [Architecture at a Glance](#-architecture-at-a-glance)
 - [The Vigilance Index](#-the-vigilance-index)
+  - [Contamination Contract](#contamination-contract)
 - [RAIL Console](#-rail-console-apphtml)
   - [Features](#features)
   - [Quick Start](#quick-start)
@@ -40,12 +41,13 @@ It ships a <strong>live browser console</strong> for real-time prediction valida
   - [CSV Format](#csv-format)
   - [Interface Overview](#interface-overview)
   - [Export Schema](#export-schema)
-- [Decay Experiments](#-decay-experiments-decay_experimentspy)
+- [Decay Experiments](#-decay-experiments-experimentsrun_publicationpy)
   - [Datasets](#datasets)
   - [Running the Experiments](#running-the-experiments)
   - [Simulated Operator Telemetry](#simulated-operator-telemetry)
   - [Admission Parameters](#default-admission-parameters)
   - [Online Learning Model](#online-learning-model)
+- [Publication Artifact](#-publication-artifact)
 - [Project Structure](#-project-structure)
 - [Technology Stack](#-technology-stack)
 - [License](#-license)
@@ -87,7 +89,7 @@ Machine learning models deployed on live streams **decay** as data distributions
 | Component | File | Purpose |
 |:---|:---|:---|
 | **RAIL Console** | `app.html` | Browser-based HITL dashboard for live validation, vigilance scoring, export, and one-click recalibration over MQTT |
-| **Decay Experiments** | `decay_experiments.py` | Reproducible simulation comparing update policies across four datasets |
+| **Decay Experiments** | `experiments/run_publication.py` | Canonical runner for real-data experiments and self-contained benchmark-like stress tests |
 
 ---
 
@@ -119,6 +121,36 @@ The intuition is a **Goldilocks window**: decisions that are too fast (hasty, li
 
 > **Key property:** β widens the window proportionally to row complexity, rewarding operators who spend more time on harder items rather than penalising them for it.
 
+### Contamination Contract
+
+The sigmoid product is the telemetry score; the contamination claim is a separate, testable admission contract. Let:
+
+$$A_\theta = \mathbf{1}[V \ge \theta] \qquad C = \mathbf{1}[\text{operator feedback is contaminated}]$$
+
+Define the validation-window rates:
+
+$$\pi = P(C=1), \qquad \alpha_\theta = P(A_\theta=1 \mid C=1), \qquad \rho_\theta = P(A_\theta=1 \mid C=0)$$
+
+Here, \(\alpha_\theta\) is the contaminated-feedback false admission rate and \(\rho_\theta\) is the clean-feedback retention rate. By Bayes' rule:
+
+$$P(C=1 \mid A_\theta=1) =
+\frac{\pi \alpha_\theta}
+     {\pi \alpha_\theta + (1-\pi)\rho_\theta}$$
+
+Therefore, if calibration data or a validation panel gives \(\alpha_\theta \le \bar{\alpha}\) and \(\rho_\theta \ge \underline{\rho}\), then the admitted recalibration stream is bounded by:
+
+$$P(C=1 \mid A_\theta=1) \le
+\frac{\pi \bar{\alpha}}
+     {\pi \bar{\alpha} + (1-\pi)\underline{\rho}}$$
+
+RAIL chooses or reports \(\theta\) against this bound rather than treating vigilance as a purely qualitative principle. The discrete experiment tables estimate the same contract with contaminated admissions, admitted yield, and Admission Efficiency:
+
+$$AE_\theta =
+\frac{\text{contaminated feedback prevented}}
+     {\text{all feedback withheld}}$$
+
+The reference implementation `experiments/rail_core.py::contamination_contract` computes these quantities from validation labels and gate decisions, and the tests verify that the empirical bound matches the Bayes expression.
+
 ---
 
 ## 🖥️ RAIL Console (`app.html`)
@@ -135,6 +167,7 @@ A **single-file browser application** that connects to any MQTT broker and provi
 | ⏱️ **Deliberation panel** | Expandable timing panel per row: live progress bar, V(Δ) admission curve, full diagnostics |
 | 📊 **Real-time monitoring** | Plotly-powered charts — Predicted vs Target, absolute error, decision counts, V over time |
 | 📤 **Filtered export** | Export Non-OK rows above the vigilance threshold as structured JSON (`RAIL.non_ok_export.v4`) |
+| **Publication activity report** | Locally record opt-in user activity and export aggregate timing, focus, edit, decision, and vigilance summaries (`RAIL.activity_report.v1`) |
 | 🔁 **One-click recalibration** | Publish eligible Non-OK rows back to the broker on `/recalibrate` |
 | 📈 **KPI dashboard** | Rows in queue · eligible rejections · average V · median Δ |
 | ⚙️ **Tunable parameters** | All vigilance parameters adjustable live, with three presets: *Conservative*, *Balanced*, *Aggressive* |
@@ -234,11 +267,18 @@ Exported JSON follows the `RAIL.non_ok_export.v4` schema:
 
 ---
 
-## 🔬 Decay Experiments (`decay_experiments.py`)
+## 🔬 Decay Experiments (`experiments/run_publication.py`)
 
-A reproducible simulation demonstrating that RAIL-gated recalibration **prevents model decay** across four datasets and two metrics (Macro-F1, Balanced Accuracy), averaged over five random seeds with confidence intervals.
+The publication harness provides one canonical entrypoint for generating paper artifacts. It distinguishes the real-data pipeline from self-contained benchmark-like generators, so empirical claims can be stated with the right level of evidence.
 
 ### Datasets
+
+The artifact uses two evidence tiers:
+
+| Tier | Entrypoint | Purpose |
+|:---|:---|:---|
+| **Real-data pipeline** | `experiments/experiments_ae.py` | SECOM, APS Failure, synthetic drift, and ATC corpora with Macro-F1, Balanced Accuracy, and Admission Efficiency outputs |
+| **Self-contained stress tests** | `experiments/rail_paper.py` | Generated SECOM-like, APS-like, ATC-like, and synthetic streams for fast reproducibility and stronger baseline comparisons |
 
 <table>
 <thead>
@@ -286,19 +326,45 @@ A reproducible simulation demonstrating that RAIL-gated recalibration **prevents
 
 ```bash
 # Install dependencies
-pip install numpy pandas scikit-learn river matplotlib datasets
+python -m pip install -e ".[experiments,dev]"
 
-# Run all experiments — outputs saved to ./outputs/
-python decay_experiments.py
+# Run the full publication pipeline
+python experiments/run_publication.py --mode both --runs 20 --seed 7
+
+# Run the fast self-contained pipeline only
+python experiments/run_publication.py --mode self-contained --runs 20 --seed 7
+
+# Run tests for the shared vigilance score
+pytest
+
+# Aggregate exported activity reports from user studies
+python experiments/activity_report.py path/to/activity-reports --output-dir publication_outputs/activity
 ```
 
-Results are saved as **600 DPI PNGs** to `./outputs/`:
+Results are saved below `./publication_outputs/` with a `run_manifest.json` containing the run mode, seed, Python version, platform, and output locations. The canonical runner also writes `JOURNAL_ARTIFACTS.md`, a reviewer-facing index of generated figures, tables, and metadata. Figures are emitted as 600 DPI PNG files plus PDF/SVG vector masters where possible.
 
 ```
-fig_decay_secom_macro_f1.png      fig_decay_secom_bal_acc.png
-fig_decay_aps_macro_f1.png        fig_decay_aps_bal_acc.png
-fig_decay_synth_macro_f1.png      fig_decay_synth_bal_acc.png
-fig_decay_atc_macro_f1.png        fig_decay_atc_bal_acc.png
+publication_outputs/
+  real_data/
+    fig_decay_secom_macro_f1.png      fig_decay_secom_bal_acc.png
+    fig_decay_aps_macro_f1.png        fig_decay_aps_bal_acc.png
+    fig_decay_synth_macro_f1.png      fig_decay_synth_bal_acc.png
+    fig_decay_atc_macro_f1.png        fig_decay_atc_bal_acc.png
+  self_contained/
+    run_metrics.csv
+    summary_metrics.csv
+    fig_self_contained_macro_f1.png/.pdf/.svg
+    fig_self_contained_admission_tradeoff.png/.pdf/.svg
+    table_main_f1.tex
+    table_main_f1.csv
+    table_main_f1.md
+    table_tradeoff.tex
+    table_tradeoff.csv
+    table_tradeoff.md
+  activity/
+    activity_session_summary.csv
+    activity_condition_summary.csv
+    activity_summary.json
 ```
 
 ### Simulated Operator Telemetry
@@ -330,13 +396,34 @@ All experiments use [**River**](https://riverml.xyz/) for true online (single-pa
 - **Numeric datasets** — `LogisticRegression` with SGD behind a `StandardScaler`
 - **ATC dataset** — `SoftmaxRegression` over TF-IDF features, accounting for class imbalance
 
-Three update policies are compared in each run:
+The real-data pipeline compares these core update policies:
 
 | Policy | Description |
 |:---|:---|
 | **No update** | Baseline — model frozen at deployment time |
 | **Unfiltered update** | Retrain on all operator labels regardless of quality |
 | **RAIL-gated update** | Retrain only on labels with V ≥ θ — the proposed approach |
+| **RAIL-weighted update** | Replay high-vigilance examples with larger weight for faster adaptation |
+
+The self-contained pipeline additionally compares confidence-gated, loss-gated, and margin-gated baselines calibrated to the RAIL admission yield.
+
+---
+
+## 📦 Publication Artifact
+
+Publication-readiness files are included for reproducibility and review:
+
+| File | Purpose |
+|:---|:---|
+| `ARTIFACT.md` | Reviewer-facing setup, commands, output layout, and data availability notes |
+| `pyproject.toml` | Python metadata, optional dependency groups, and test configuration |
+| `requirements.txt` | Flat experiment dependency list |
+| `CITATION.cff` | Citation metadata for repository archiving |
+| `schemas/` | JSON Schemas for export, recalibration, and activity-report payloads |
+| `experiments/activity_report.py` | Aggregates exported browser activity reports into session and condition summaries |
+| `.github/workflows/ci.yml` | CI smoke test for the shared RAIL scoring contract |
+
+Generated outputs and downloaded datasets are ignored by Git. For submission, archive `publication_outputs/` and deposit the code/results bundle in a persistent repository.
 
 ---
 
@@ -345,11 +432,21 @@ Three update policies are compared in each run:
 ```
 rail/
 ├── app/                      # RAIL Console (browser, zero-build)
-│   └── app.html              #   ↳ single-file operator dashboard
+│   ├── app.html              #   ↳ single-file operator dashboard
+│   ├── config.json           #   ↳ demo MQTT configuration
+│   └── data.csv              #   ↳ demo CSV stream
 ├── experiments/              # Decay prevention experiment harness
-│   └── decay_experiments.py  #   ↳ reproducible simulation script
-├── outputs/                  # Generated plots (600 DPI PNG, git-ignored)
+│   ├── rail_core.py          #   ↳ shared admission-score reference
+│   ├── run_publication.py    #   ↳ canonical publication runner
+│   ├── experiments_ae.py     #   ↳ real-data pipeline
+│   └── rail_paper.py         #   ↳ self-contained benchmark-like pipeline
+├── tests/                    # Shared scoring tests
+├── schemas/                  # JSON payload contracts
+├── publication_outputs/      # Generated plots/tables/manifests (git-ignored)
 ├── _cache/                   # Downloaded dataset cache (auto-created)
+├── ARTIFACT.md
+├── CITATION.cff
+├── pyproject.toml
 └── README.md
 ```
 
@@ -379,7 +476,7 @@ rail/
 </tr>
 <tr>
   <td><strong>Experiments — Core</strong></td>
-  <td>Python 3.8+, NumPy, pandas</td>
+  <td>Python 3.10+, NumPy, pandas</td>
   <td>Data wrangling and simulation engine</td>
 </tr>
 <tr>

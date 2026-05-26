@@ -42,10 +42,36 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import f1_score
 from sklearn.preprocessing import StandardScaler
+
+try:
+    from .rail_core import AdmissionParams as CoreAdmissionParams
+    from .rail_core import admission_diagnostics
+    from .publication_artifacts import (
+        METHOD_MARKERS,
+        configure_matplotlib,
+        method_color,
+        method_label,
+        save_publication_figure,
+        wide_metric_table,
+        write_markdown_table,
+    )
+except ImportError:
+    from rail_core import AdmissionParams as CoreAdmissionParams
+    from rail_core import admission_diagnostics
+    from publication_artifacts import (
+        METHOD_MARKERS,
+        configure_matplotlib,
+        method_color,
+        method_label,
+        save_publication_figure,
+        wide_metric_table,
+        write_markdown_table,
+    )
 
 EPS = 1e-12
 
@@ -189,19 +215,28 @@ def score_margin_gated(probs: np.ndarray) -> float:
 
 def rail_components(telemetry: Telemetry, cfg: PolicyConfig) -> Dict[str, float]:
     delta = float(telemetry.decision_time_s - telemetry.anchor_time_s)
-    beta = (
-        cfg.w_f * float(telemetry.num_features_shown)
-        + cfg.w_e * float(telemetry.edit_count)
-        + cfg.w_s * float(telemetry.focus_time_s)
+    diagnostics = admission_diagnostics(
+        delta_sec=delta,
+        num_features=telemetry.num_features_shown,
+        edit_count=telemetry.edit_count,
+        focus_seconds=telemetry.focus_time_s,
+        params=CoreAdmissionParams(
+            tau_min=cfg.tau_min,
+            tau_max=cfg.tau_max,
+            k=cfg.k,
+            theta=cfg.theta,
+            w_delta=cfg.w_delta,
+            w_features=cfg.w_f,
+            w_edits=cfg.w_e,
+            w_focus=cfg.w_s,
+        ),
     )
-    s_fast = 1.0 / (1.0 + math.exp(-cfg.k * (cfg.w_delta * delta - (cfg.tau_min + beta))))
-    s_slow = 1.0 / (1.0 + math.exp(-cfg.k * ((cfg.tau_max + beta) - cfg.w_delta * delta)))
     return {
-        "score": float(s_fast * s_slow),
+        "score": diagnostics["score"],
         "delta": delta,
-        "beta": beta,
-        "s_fast": s_fast,
-        "s_slow": s_slow,
+        "beta": diagnostics["beta"],
+        "s_fast": diagnostics["s_fast"],
+        "s_slow": diagnostics["s_slow"],
     }
 
 
@@ -464,6 +499,175 @@ def latex_tradeoff_table(summary_rows: Sequence[SummaryRow], datasets: Sequence[
     lines.append("}")
     lines.append("\\end{table*}")
     return "\n".join(lines)
+
+
+def write_self_contained_table_views(
+    df_runs: pd.DataFrame,
+    df_summary: pd.DataFrame,
+    outdir: Path,
+    datasets: Sequence[str],
+    methods: Sequence[str],
+) -> None:
+    """Write CSV and Markdown table views alongside the LaTeX masters."""
+
+    f1_wide = wide_metric_table(
+        df_summary,
+        value_col="final_macro_f1_mean",
+        std_col="final_macro_f1_std",
+        datasets=datasets,
+        methods=methods,
+        decimals=3,
+    )
+    f1_wide.to_csv(outdir / "table_main_f1.csv", index=False)
+    write_markdown_table(f1_wide, outdir / "table_main_f1.md")
+
+    runs = df_runs.copy()
+    runs["contaminated_admission_rate"] = (
+        runs["contaminated_admissions"] / runs["total_feedback"].clip(lower=1)
+    )
+    tradeoff = (
+        runs.groupby(["dataset", "method"], as_index=False)
+        .agg(
+            final_macro_f1_mean=("final_macro_f1", "mean"),
+            final_macro_f1_std=("final_macro_f1", "std"),
+            contaminated_admissions_mean=("contaminated_admissions", "mean"),
+            contaminated_admissions_std=("contaminated_admissions", "std"),
+            contaminated_admission_rate_mean=("contaminated_admission_rate", "mean"),
+            admitted_yield_mean=("admitted_yield", "mean"),
+            admitted_yield_std=("admitted_yield", "std"),
+            ae_mean=("ae", "mean"),
+            ae_std=("ae", "std"),
+        )
+        .fillna(0.0)
+    )
+    tradeoff["method_label"] = tradeoff["method"].map(method_label)
+    tradeoff = tradeoff[
+        [
+            "dataset",
+            "method_label",
+            "final_macro_f1_mean",
+            "final_macro_f1_std",
+            "contaminated_admissions_mean",
+            "contaminated_admissions_std",
+            "contaminated_admission_rate_mean",
+            "admitted_yield_mean",
+            "admitted_yield_std",
+            "ae_mean",
+            "ae_std",
+        ]
+    ]
+    tradeoff.to_csv(outdir / "table_tradeoff.csv", index=False)
+
+    display = tradeoff.copy()
+    for col in display.columns:
+        if col not in {"dataset", "method_label"}:
+            display[col] = display[col].map(lambda v: f"{float(v):.3f}")
+    display = display.rename(columns={"method_label": "method"})
+    write_markdown_table(display, outdir / "table_tradeoff.md")
+
+
+def plot_self_contained_macro_f1(
+    df_summary: pd.DataFrame,
+    outdir: Path,
+    datasets: Sequence[str],
+    methods: Sequence[str],
+) -> None:
+    configure_matplotlib()
+    fig, axes = plt.subplots(2, 2, figsize=(7.4, 5.4), sharex=True)
+    axes_flat = axes.ravel()
+
+    for ax, dataset in zip(axes_flat, datasets):
+        subset = df_summary[df_summary["dataset"] == dataset].set_index("method")
+        means = [subset.loc[method, "final_macro_f1_mean"] for method in methods]
+        stds = [subset.loc[method, "final_macro_f1_std"] for method in methods]
+        ypos = np.arange(len(methods))
+        colors = [method_color(method) for method in methods]
+        ax.barh(
+            ypos,
+            means,
+            xerr=stds,
+            color=colors,
+            edgecolor="black",
+            linewidth=0.35,
+            error_kw={"elinewidth": 0.8, "capsize": 2.5, "capthick": 0.8},
+        )
+        ax.set_title(dataset)
+        ax.set_yticks(ypos)
+        ax.set_yticklabels([method_label(method) for method in methods])
+        ax.invert_yaxis()
+        ax.set_xlim(0.0, 1.0)
+        ax.grid(True, axis="x")
+
+    for ax in axes_flat[2:]:
+        ax.set_xlabel("Final Macro-F1")
+    fig.suptitle("Self-contained stress tests", y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    save_publication_figure(fig, outdir / "fig_self_contained_macro_f1")
+
+
+def plot_self_contained_tradeoff(
+    df_runs: pd.DataFrame,
+    outdir: Path,
+    datasets: Sequence[str],
+    methods: Sequence[str],
+) -> None:
+    configure_matplotlib()
+    runs = df_runs.copy()
+    runs["contaminated_per_1000"] = (
+        runs["contaminated_admissions"] / runs["total_feedback"].clip(lower=1) * 1000.0
+    )
+    tradeoff = (
+        runs.groupby(["dataset", "method"], as_index=False)
+        .agg(
+            admitted_yield=("admitted_yield", "mean"),
+            contaminated_per_1000=("contaminated_per_1000", "mean"),
+            final_macro_f1=("final_macro_f1", "mean"),
+            ae=("ae", "mean"),
+        )
+        .fillna(0.0)
+    )
+
+    fig, axes = plt.subplots(2, 2, figsize=(7.4, 5.4), sharex=True)
+    axes_flat = axes.ravel()
+
+    for ax, dataset in zip(axes_flat, datasets):
+        subset = tradeoff[tradeoff["dataset"] == dataset].set_index("method")
+        for method in methods:
+            row = subset.loc[method]
+            size = 45.0 + 170.0 * float(row["final_macro_f1"])
+            ax.scatter(
+                float(row["admitted_yield"]) * 100.0,
+                float(row["contaminated_per_1000"]),
+                s=size,
+                marker=METHOD_MARKERS.get(method, "o"),
+                color=method_color(method),
+                edgecolor="black",
+                linewidth=0.45,
+                alpha=0.9,
+                label=method_label(method),
+            )
+        ax.set_title(dataset)
+        ax.grid(True)
+        ax.set_ylim(bottom=0.0)
+
+    axes_flat[0].set_ylabel("Contaminated admissions per 1,000")
+    axes_flat[2].set_ylabel("Contaminated admissions per 1,000")
+    axes_flat[2].set_xlabel("Admitted feedback yield (%)")
+    axes_flat[3].set_xlabel("Admitted feedback yield (%)")
+
+    handles, labels = axes_flat[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=4,
+        bbox_to_anchor=(0.5, -0.02),
+        columnspacing=1.0,
+        handletextpad=0.35,
+    )
+    fig.suptitle("Admission trade-off under calibrated baselines", y=0.995)
+    fig.tight_layout(rect=(0, 0.07, 1, 0.97))
+    save_publication_figure(fig, outdir / "fig_self_contained_admission_tradeoff")
 
 
 def make_default_policies() -> List[PolicyConfig]:
@@ -800,8 +1004,14 @@ def run_benchmark(runs: int = 20, output_dir: str = "rail_autocontained_results"
     policies = make_default_policies()
 
     for run_id in range(runs):
+        print(f"[RAIL] Self-contained run {run_id + 1}/{runs}: building datasets", flush=True)
         datasets = build_all_datasets(seed + run_id * 17)
         for ds in datasets:
+            print(
+                f"[RAIL] Self-contained run {run_id + 1}/{runs}: "
+                f"{ds.name} ({len(ds.replay_events)} replay events)",
+                flush=True,
+            )
             all_classes = np.unique(np.concatenate([ds.y_warmup, ds.y_test]))
             base_model = SklearnOnlineClassifier(classes=all_classes, random_state=seed + run_id)
             base_model.fit_initial(ds.X_warmup, ds.y_warmup)
@@ -823,6 +1033,7 @@ def run_benchmark(runs: int = 20, output_dir: str = "rail_autocontained_results"
             )
             all_run_rows.extend(rows)
 
+    print("[RAIL] Writing self-contained tables and figures", flush=True)
     summary = summarize_runs(all_run_rows)
     methods = [p.name for p in policies]
     datasets = ["Synthetic", "SECOM-like", "APS-like", "ATC-like"]
@@ -838,6 +1049,9 @@ def run_benchmark(runs: int = 20, output_dir: str = "rail_autocontained_results"
     trade_tex = latex_tradeoff_table(summary, datasets=datasets, methods=methods)
     (outdir / "table_main_f1.tex").write_text(main_tex, encoding="utf-8")
     (outdir / "table_tradeoff.tex").write_text(trade_tex, encoding="utf-8")
+    write_self_contained_table_views(df_runs, df_summary, outdir, datasets, methods)
+    plot_self_contained_macro_f1(df_summary, outdir, datasets, methods)
+    plot_self_contained_tradeoff(df_runs, outdir, datasets, methods)
 
     return {
         "output_dir": str(outdir),

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jorge-martinez-gil/rail/schemas/rail.non_ok_export.v4.schema.json",
+  "title": "RAIL Non-OK Export v4",
+  "type": "object",
+  "required": ["schema", "exportedAt", "theta", "params", "counts", "rows"],
+  "properties": {
+    "schema": {
+      "const": "RAIL.non_ok_export.v4"
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "theta": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "params": {
+      "type": "object",
+      "required": ["tauMin", "tauMax", "k"],
+      "properties": {
+        "tauMin": { "type": "number", "minimum": 0 },
+        "tauMax": { "type": "number", "minimum": 0 },
+        "k": { "type": "number", "exclusiveMinimum": 0 },
+        "wLatency": { "type": "number", "minimum": 0 },
+        "wFeatures": { "type": "number", "minimum": 0 },
+        "wEdits": { "type": "number", "minimum": 0 },
+        "wFocus": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "counts": {
+      "type": "object",
+      "required": ["non_ok_total", "non_ok_eligible"],
+      "properties": {
+        "non_ok_total": { "type": "integer", "minimum": 0 },
+        "non_ok_eligible": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["Timestamp", "Status", "Features", "Target", "Predicted", "Vigilance", "Diagnostics"],
+        "properties": {
+          "Timestamp": { "type": "string" },
+          "Status": { "const": "non-ok" },
+          "Features": { "type": "object" },
+          "Target": {},
+          "Predicted": {},
+          "OperatorNote": { "type": "string" },
+          "Vigilance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "Diagnostics": {
+            "type": "object",
+            "required": ["delta_s", "beta", "s_fast", "s_slow", "edits", "focus_ms"],
+            "properties": {
+              "anchor_reason": { "type": "string" },
+              "delta_s": { "type": "number", "minimum": 0 },
+              "beta": { "type": "number", "minimum": 0 },
+              "z_fast": { "type": "number" },
+              "z_slow": { "type": "number" },
+              "s_fast": { "type": "number", "minimum": 0, "maximum": 1 },
+              "s_slow": { "type": "number", "minimum": 0, "maximum": 1 },
+              "edits": { "type": "integer", "minimum": 0 },
+              "focus_ms": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

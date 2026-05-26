@@ -52,6 +52,19 @@ from river import linear_model, compose
 from river import optim
 from river import preprocessing as rpre
 
+try:
+    from .rail_core import (
+        AdmissionParams as CoreAdmissionParams,
+        admission_score as core_admission_score,
+        sigmoid as core_sigmoid,
+    )
+except ImportError:
+    from rail_core import (
+        AdmissionParams as CoreAdmissionParams,
+        admission_score as core_admission_score,
+        sigmoid as core_sigmoid,
+    )
+
 warnings.filterwarnings("ignore")
 
 # ============================================================
@@ -125,7 +138,7 @@ def save_png(fig, path: Path) -> None:
 # ============================================================
 
 def sigmoid(z: float) -> float:
-    return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, z))))
+    return core_sigmoid(z)
 
 
 @dataclass
@@ -150,10 +163,22 @@ class AdmissionParams:
 def admission_score(
     delta_sec: float, nf: int, ne: int, sf: float, p: AdmissionParams
 ) -> float:
-    beta   = p.w_f * nf + p.w_e * ne + p.w_s * sf
-    s_fast = sigmoid(p.k * (p.w_delta * delta_sec - (p.tau_min + beta)))
-    s_slow = sigmoid(p.k * ((p.tau_max + beta) - p.w_delta * delta_sec))
-    return s_fast * s_slow
+    return core_admission_score(
+        delta_sec=delta_sec,
+        num_features=nf,
+        edit_count=ne,
+        focus_seconds=sf,
+        params=CoreAdmissionParams(
+            tau_min=p.tau_min,
+            tau_max=p.tau_max,
+            k=p.k,
+            theta=p.theta,
+            w_delta=p.w_delta,
+            w_features=p.w_f,
+            w_edits=p.w_e,
+            w_focus=p.w_s,
+        ),
+    )
 
 
 # ============================================================
