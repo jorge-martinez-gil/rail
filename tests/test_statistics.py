@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from experiments.statistics import (
+from experiments.rail_stats import (
     _phi,
     _phi_inv,
     bootstrap_ci,

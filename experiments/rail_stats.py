@@ -19,6 +19,15 @@ submission we strengthen this with:
 The module is pure standard library so it can be invoked from CI without
 adding dependencies. NumPy is used opportunistically when available for
 speed but never required.
+
+Note
+----
+This module is named ``rail_stats`` rather than ``statistics`` to avoid
+shadowing the Python standard library ``statistics`` module when scripts
+in ``experiments/`` are run directly (which puts the experiments directory
+on ``sys.path``). Importing ``experiments.rail_stats`` always works; the
+short name preserves the stdlib ``import statistics`` behaviour used by
+``river`` and other dependencies.
 """
 
 from __future__ import annotations
