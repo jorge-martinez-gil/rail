@@ -1,54 +1,61 @@
 # RAIL Research Artifact Guide
 
-This repository contains the RAIL console and the experiment code used to evaluate reliability-aware admission of human feedback for stream recalibration.
+This repository contains the RAIL console and the experiment code used to
+evaluate reliability-aware admission of human feedback for stream
+recalibration. Everything in the published paper is reproducible from a
+single driver, `experiments/reproduce_paper.py`, over the frozen seeds in
+`SEED_MANIFEST.json`.
 
-## Evidence Tiers
+## Scope of the evidence
 
-The codebase separates two kinds of evidence.
+The four headline streams (Synthetic, SECOM-like, APS-like, ATC-like) are
+generated **self-contained** by the reproduction driver. They preserve the
+dimensionality, class imbalance, and workload structure of their real-world
+references without requiring any external download, so a reviewer can
+execute the full artifact offline. Claims based on these streams are
+described in the paper as controlled stress tests, not as direct
+real-world measurements.
 
-1. Real-data decay experiments: SECOM, APS Failure, synthetic drift stress test, and ATC corpora are orchestrated through `experiments/experiments_ae.py`.
-2. Self-contained benchmark-like experiments: `experiments/rail_paper.py` uses generated datasets that mimic the stressors in the paper and compares RAIL against stronger gating baselines.
-
-Use the real-data pipeline for the primary empirical claims. Use the self-contained pipeline for fast review, CI smoke checks, and ablation-style stress testing when external datasets are unavailable.
-
-## Recommended Setup
+## Recommended setup
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[experiments,dev]"
 ```
 
-On Unix-like systems, replace the activation command with `source .venv/bin/activate`.
+## Canonical commands
 
-## Canonical Commands
-
-Run the full publication pipeline:
+Reproduce the paper (headline tier, 30 seeds, all stages):
 
 ```bash
-python experiments/run_publication.py --mode both --runs 20 --seed 7
+python -m experiments.reproduce_paper --tier headline --workers 8 --slow
 ```
 
-On Windows, the same full artifact run is wrapped by:
-
-```bat
-run_all_results.bat
-```
-
-Run only the real-data experiments:
+Quick sanity check (~30 s) and iteration tier are documented in `RUN.md`:
 
 ```bash
-python experiments/run_publication.py --mode real --seed 7
+python -m experiments.reproduce_paper --tier smoke --workers 2 --fast
+python -m experiments.reproduce_paper --tier medium --workers 8
 ```
 
-Run only the self-contained benchmark-like experiments:
+Regenerate the two main-text figures from a completed headline run:
 
 ```bash
-python experiments/run_publication.py --mode self-contained --runs 20 --seed 7
+python -m experiments.make_main_figures \
+    --data publication_outputs/self_contained_v3 \
+    --out publication_outputs/main_figures
 ```
 
-Run tests for shared scoring logic:
+Cross-check the two online-learner backends (see the backend note in
+`RUN.md`):
+
+```bash
+python -m experiments.diagnose_backend --seeds 5 --datasets Synthetic
+```
+
+Run the test suite for the shared scoring and statistics logic:
 
 ```bash
 pytest
@@ -57,32 +64,40 @@ pytest
 Aggregate browser activity reports exported by the RAIL console:
 
 ```bash
-python experiments/activity_report.py path/to/activity-reports --output-dir publication_outputs/activity
+python -m experiments.activity_report path/to/activity-reports \
+    --output-dir publication_outputs/activity
 ```
 
 ## Outputs
 
-By default, generated outputs are written below `publication_outputs/`.
+Each stage of the driver writes below `publication_outputs/`:
 
-- `publication_outputs/real_data/`: real-data plots and admission-efficiency tables.
-- `publication_outputs/self_contained/`: generated-dataset summaries, LaTeX tables, and JSON/CSV metrics.
-- `publication_outputs/activity/`: session-level and condition-level summaries from exported browser activity reports.
-- `publication_outputs/run_manifest.json`: command-line settings, Python version, platform, and timestamps for the run.
-- `publication_outputs/JOURNAL_ARTIFACTS.md`: index of generated figures, tables, metadata, and recommended manuscript assets.
+- `self_contained_v3/`: `summary_metrics.csv`, `run_metrics.csv`,
+  `stats_report.md`, `cd_diagram_ae.pdf` — the canonical headline data.
+- `main_figures/`: the two main-text figures (`fig_contamination_prevention`,
+  `fig_pareto_yield_vs_contamination`) as 600 DPI PNG and vector PDF.
+- `regime/`: `regime_long.csv`, `regime_winners.csv`, `phase_diagram_ae.pdf`.
+- `theory/`: `theory_grid.json` (closed-form contract/risk grid).
+- `run_manifest.json`: tier, seeds, environment fingerprint, and git SHA.
 
-Figures are written as 600 DPI PNG files plus PDF and SVG vector masters when generated through the canonical publication runner. Tables are written as LaTeX masters with CSV and Markdown companions where possible.
+Generated outputs and any downloaded caches are intentionally ignored by
+Git. For submission, archive `publication_outputs/` and deposit it with the
+accepted artifact under a persistent DOI.
 
-Generated outputs and downloaded dataset caches are intentionally ignored by Git. For submission, archive the output directory and deposit it with the accepted artifact or a data repository.
+## Reviewer notes
 
-## Data Availability Statement Draft
-
-The SECOM and APS datasets are downloaded from the UCI Machine Learning Repository. ATC corpora are downloaded through Hugging Face Datasets where licensing permits. The repository also includes self-contained benchmark-like generators for reviewers who need to execute the artifact without external data access. Generated results, run manifests, and source code should be deposited with a persistent DOI before submission.
-
-## Reviewer Notes
-
-- The browser console uses MQTT over WebSockets and can be run without a build step.
-- The default app configuration targets a local WebSocket-enabled MQTT broker; experiments do not depend on any broker.
-- JSON Schemas for export, recalibration, and activity-report payloads live in `schemas/`.
-- The README states the contamination contract as a Bayes-rule bound over validation rates, and `experiments/rail_core.py::contamination_contract` exposes the same calculation for reproducibility.
-- Activity reporting is opt-in, local to the browser, and exports pseudonymous study metadata (`participant_id`, `condition`, `task_batch`) plus aggregate timing/focus/edit/vigilance summaries. Raw row values and free-text notes are excluded unless the operator explicitly enables them before export.
-- Claims based on generated datasets should be described as stress tests, not as direct real-world evidence.
+- The browser console (`app/`) uses MQTT over WebSockets and runs without a
+  build step; the experiments do not depend on any broker.
+- JSON Schemas for export, recalibration, and activity-report payloads live
+  in `schemas/`.
+- The contamination contract is a Bayes-rule bound over validation rates;
+  `experiments/rail_core.py::contamination_contract` exposes the same
+  calculation used in the paper.
+- Activity reporting is opt-in, local to the browser, and exports
+  pseudonymous study metadata plus aggregate timing/focus/edit/vigilance
+  summaries; raw row values and free-text notes are excluded unless the
+  operator explicitly enables them before export.
+- Backend sensitivity: the NumPy and sklearn online-learner backends are
+  different optimisers. Confirm the headline ranking under `--slow` at full
+  scale and audit it with `experiments/diagnose_backend.py` before
+  camera-ready.

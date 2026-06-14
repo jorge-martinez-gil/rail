@@ -3,7 +3,7 @@
 The existing experiment harness (``experiments.rail_paper``) ships three
 strong sample-selection baselines: ``confidence_gated``, ``loss_gated``,
 and ``margin_gated``. To strengthen the empirical comparison expected by a
-DKE submission we add four classical noise-robust families, each exposed as
+Information Systems submission we add four classical noise-robust families, each exposed as
 a small, dependency-light Python class with the same ``decide(event)``
 contract so they can be dropped into any replay loop:
 
@@ -30,8 +30,8 @@ from __future__ import annotations
 
 import math
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Deque, Iterable
 
 try:
     from .rail_core import _P2Quantile  # type: ignore[attr-defined]
@@ -71,8 +71,8 @@ class CoTeachingGate:
     forget_rate: float = 0.3
     ramp_steps: int = 1000
     window: int = 500
-    _hist_a: Deque[float] = field(default_factory=deque, init=False, repr=False)
-    _hist_b: Deque[float] = field(default_factory=deque, init=False, repr=False)
+    _hist_a: deque[float] = field(default_factory=deque, init=False, repr=False)
+    _hist_b: deque[float] = field(default_factory=deque, init=False, repr=False)
     _t: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -160,7 +160,7 @@ class JointAgreementGate:
 
     keep_fraction: float = 0.7
     window: int = 500
-    _hist: Deque[float] = field(default_factory=deque, init=False, repr=False)
+    _hist: deque[float] = field(default_factory=deque, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not 0.0 < self.keep_fraction <= 1.0:
@@ -240,8 +240,8 @@ def _quantile(values: Iterable[float], q: float) -> float:
     if not 0.0 <= q <= 1.0:
         raise ValueError("q must lie in [0, 1]")
     idx = q * (len(vs) - 1)
-    lo = int(math.floor(idx))
-    hi = int(math.ceil(idx))
+    lo = math.floor(idx)
+    hi = math.ceil(idx)
     if lo == hi:
         return vs[lo]
     frac = idx - lo
@@ -250,7 +250,7 @@ def _quantile(values: Iterable[float], q: float) -> float:
 
 __all__ = [
     "CoTeachingGate",
-    "SelfPacedGate",
-    "JointAgreementGate",
     "DynamicQuantileGate",
+    "JointAgreementGate",
+    "SelfPacedGate",
 ]

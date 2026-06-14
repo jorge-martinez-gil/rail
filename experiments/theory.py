@@ -44,9 +44,8 @@ without pulling NumPy.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable
 
 try:
     from .rail_core import contamination_contract
@@ -257,7 +256,7 @@ def pareto_frontier(
 
     n = len(scores)
     out: list[ParetoPoint] = []
-    base_pi = sum(1 for ok in feedback_is_correct if not ok) / n if n else 0.0
+    sum(1 for ok in feedback_is_correct if not ok) / n if n else 0.0
     for theta in thetas:
         admitted = [s >= theta for s in scores]
         contract = contamination_contract(feedback_is_correct, admitted)
@@ -340,9 +339,7 @@ def monte_carlo_contamination(
                     contam_admitted += 1
         contam_emp.append(contam_admitted)
         yield_emp.append(admitted_count)
-        post_admit_contam.append(
-            contam_admitted / admitted_count if admitted_count > 0 else 0.0
-        )
+        post_admit_contam.append(contam_admitted / admitted_count if admitted_count > 0 else 0.0)
 
     return {
         "mean_post_admission_contamination": sum(post_admit_contam) / runs,
@@ -351,7 +348,5 @@ def monte_carlo_contamination(
         "analytical_post_admission_contamination": bayes_post_admission_contamination(
             pi, alpha, rho
         ),
-        "analytical_expected_contamination": expected_contaminated_admissions(
-            horizon, pi, alpha
-        ),
+        "analytical_expected_contamination": expected_contaminated_admissions(horizon, pi, alpha),
     }

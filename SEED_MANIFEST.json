@@ -1,0 +1,42 @@
+{
+  "schema": "RAIL.seed_manifest.v1",
+  "purpose": "Frozen seeds and run protocol for the Information Systems (Elsevier) submission. Anything in the published paper must be reproducible from these seeds via experiments/reproduce_paper.py.",
+  "comment": "Headline results use the 30-seed set. Smoke runs use the smoke set. Robustness checks use the long set.",
+  "seeds": {
+    "smoke": [7],
+    "headline_30": [7, 11, 13, 17, 19, 23, 29, 31, 37, 41,
+                    43, 47, 53, 59, 61, 67, 71, 73, 79, 83,
+                    89, 97, 101, 103, 107, 109, 113, 127, 131, 137],
+    "robustness_50": [7, 11, 13, 17, 19, 23, 29, 31, 37, 41,
+                      43, 47, 53, 59, 61, 67, 71, 73, 79, 83,
+                      89, 97, 101, 103, 107, 109, 113, 127, 131, 137,
+                      139, 149, 151, 157, 163, 167, 173, 179, 181, 191,
+                      193, 197, 199, 211, 223, 227, 229, 233, 239, 241]
+  },
+  "regimes": {
+    "phase_diagram_noise_load_grid": "experiments.regime_sweep.REGIMES_2D_DEFAULT (24 cells)",
+    "phase_diagram_imbalance": "experiments.regime_sweep.REGIMES_IMBALANCE (11 cells)"
+  },
+  "datasets": {
+    "benchmark_streams": ["Synthetic (4-class drift)", "SECOM-like", "APS-like", "ATC-like"],
+    "note": "All four headline streams are produced self-contained by experiments/reproduce_paper.py; they preserve the dimensionality, imbalance, and workload structure of their real-world references without requiring external downloads."
+  },
+  "policies": {
+    "legacy": ["static", "always", "confidence_gated", "loss_gated", "margin_gated", "rail_gated", "rail_weighted"],
+    "integrated": ["co_teaching", "self_paced", "joint_agreement", "dynamic_quantile", "gce_weight", "sce_weight", "itlm"]
+  },
+  "statistics": {
+    "headline_table_seeds": 30,
+    "multi_dataset_tests": ["friedman_iman_davenport", "nemenyi_posthoc_alpha_0.05"],
+    "pairwise_tests": ["paired_wilcoxon", "holm_bonferroni_correction"],
+    "confidence_intervals": ["bca_bootstrap_5000"],
+    "effect_sizes": ["cliffs_delta", "rank_biserial"]
+  },
+  "outputs": {
+    "headline_dir": "publication_outputs/self_contained_v3",
+    "main_figures_dir": "publication_outputs/main_figures",
+    "regime_dir": "publication_outputs/regime",
+    "theory_dir": "publication_outputs/theory",
+    "self_contained_dir": "publication_outputs/self_contained_v3"
+  }
+}

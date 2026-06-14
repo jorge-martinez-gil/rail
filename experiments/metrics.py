@@ -2,7 +2,7 @@
 
 The paper reports four headline metrics: Macro-F1, admission yield,
 contamination reduction, and Admission Efficiency. To strengthen the
-operational story expected by a DKE reviewer we add four further metrics
+operational story expected by a Information Systems reviewer we add four further metrics
 that target the *temporal* dimension of contamination:
 
 * :func:`time_to_first_contamination` -- index of the first contaminated
@@ -48,15 +48,13 @@ def time_to_first_contamination(
 
     if len(feedback_is_correct) != len(admitted):
         raise ValueError("inputs must have the same length")
-    for i, (ok, a) in enumerate(zip(feedback_is_correct, admitted)):
+    for i, (ok, a) in enumerate(zip(feedback_is_correct, admitted, strict=False)):
         if a and not ok:
             return i
     return -1
 
 
-def contamination_half_life(
-    feedback_is_correct: Sequence[bool], admitted: Sequence[bool]
-) -> int:
+def contamination_half_life(feedback_is_correct: Sequence[bool], admitted: Sequence[bool]) -> int:
     """Horizon at which half of the run's contaminated admissions are reached.
 
     Returns ``-1`` if no contaminated admission ever occurs. The value is the
@@ -66,12 +64,12 @@ def contamination_half_life(
 
     if len(feedback_is_correct) != len(admitted):
         raise ValueError("inputs must have the same length")
-    total = sum(1 for ok, a in zip(feedback_is_correct, admitted) if a and not ok)
+    total = sum(1 for ok, a in zip(feedback_is_correct, admitted, strict=False) if a and not ok)
     if total == 0:
         return -1
     target = math.ceil(total / 2)
     running = 0
-    for i, (ok, a) in enumerate(zip(feedback_is_correct, admitted)):
+    for i, (ok, a) in enumerate(zip(feedback_is_correct, admitted, strict=False)):
         if a and not ok:
             running += 1
             if running >= target:
@@ -89,7 +87,7 @@ def cumulative_contamination_curve(
     out: list[CumulativePoint] = []
     contaminated = 0
     admitted_running = 0
-    for i, (ok, a) in enumerate(zip(feedback_is_correct, admitted)):
+    for _i, (ok, a) in enumerate(zip(feedback_is_correct, admitted, strict=False)):
         if a:
             admitted_running += 1
             if not ok:
@@ -104,9 +102,7 @@ def cumulative_contamination_curve(
     return out
 
 
-def admission_yield_loss(
-    feedback_is_correct: Sequence[bool], admitted: Sequence[bool]
-) -> float:
+def admission_yield_loss(feedback_is_correct: Sequence[bool], admitted: Sequence[bool]) -> float:
     """Fraction of clean feedback unnecessarily rejected (Type II error)."""
 
     if len(feedback_is_correct) != len(admitted):
@@ -114,7 +110,9 @@ def admission_yield_loss(
     clean = [ok for ok in feedback_is_correct if ok]
     if not clean:
         return 0.0
-    rejected_clean = sum(1 for ok, a in zip(feedback_is_correct, admitted) if ok and not a)
+    rejected_clean = sum(
+        1 for ok, a in zip(feedback_is_correct, admitted, strict=False) if ok and not a
+    )
     return rejected_clean / len(clean)
 
 
@@ -146,8 +144,8 @@ def burn_in_estimator_from_paper(
 
     def _q(p: float) -> float:
         idx = p * (len(sorted_d) - 1)
-        lo = int(math.floor(idx))
-        hi = int(math.ceil(idx))
+        lo = math.floor(idx)
+        hi = math.ceil(idx)
         if lo == hi:
             return sorted_d[lo]
         frac = idx - lo
@@ -164,9 +162,9 @@ def burn_in_estimator_from_paper(
 
 __all__ = [
     "CumulativePoint",
-    "time_to_first_contamination",
-    "contamination_half_life",
-    "cumulative_contamination_curve",
     "admission_yield_loss",
     "burn_in_estimator_from_paper",
+    "contamination_half_life",
+    "cumulative_contamination_curve",
+    "time_to_first_contamination",
 ]

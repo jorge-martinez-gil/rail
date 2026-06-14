@@ -39,7 +39,9 @@ def test_out_of_window_decisions_score_lower_than_deliberate_decision():
     params = AdmissionParams(tau_min=1.5, tau_max=4.8, k=2.8, theta=0.38)
 
     hasty = admission_score(0.2, num_features=20, edit_count=0, focus_seconds=0.1, params=params)
-    deliberate = admission_score(2.8, num_features=20, edit_count=1, focus_seconds=2.0, params=params)
+    deliberate = admission_score(
+        2.8, num_features=20, edit_count=1, focus_seconds=2.0, params=params
+    )
     confused = admission_score(9.0, num_features=20, edit_count=1, focus_seconds=4.0, params=params)
 
     assert hasty < deliberate

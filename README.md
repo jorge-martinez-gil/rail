@@ -41,9 +41,9 @@ It ships a <strong>live browser console</strong> for real-time prediction valida
   - [CSV Format](#csv-format)
   - [Interface Overview](#interface-overview)
   - [Export Schema](#export-schema)
-- [Decay Experiments](#-decay-experiments-experimentsrun_publicationpy)
-  - [Datasets](#datasets)
-  - [Running the Experiments](#running-the-experiments)
+- [Reproducing the Paper](#-reproducing-the-paper-experimentsreproduce_paperpy)
+  - [Benchmark streams](#benchmark-streams)
+  - [Running the experiments](#running-the-experiments)
   - [Simulated Operator Telemetry](#simulated-operator-telemetry)
   - [Admission Parameters](#default-admission-parameters)
   - [Online Learning Model](#online-learning-model)
@@ -89,7 +89,7 @@ Machine learning models deployed on live streams **decay** as data distributions
 | Component | File | Purpose |
 |:---|:---|:---|
 | **RAIL Console** | `app.html` | Browser-based HITL dashboard for live validation, vigilance scoring, export, and one-click recalibration over MQTT |
-| **Decay Experiments** | `experiments/run_publication.py` | Canonical runner for real-data experiments and self-contained benchmark-like stress tests |
+| **Reproduction driver** | `experiments/reproduce_paper.py` | Single-command runner that produces every table, figure, and statistic in the paper from the frozen seed manifest |
 
 ---
 
@@ -267,24 +267,21 @@ Exported JSON follows the `RAIL.non_ok_export.v4` schema:
 
 ---
 
-## 🔬 Decay Experiments (`experiments/run_publication.py`)
+## 🔬 Reproducing the Paper (`experiments/reproduce_paper.py`)
 
-The publication harness provides one canonical entrypoint for generating paper artifacts. It distinguishes the real-data pipeline from self-contained benchmark-like generators, so empirical claims can be stated with the right level of evidence.
+A single driver produces every table, figure, and statistic in the paper
+from the frozen seeds in `SEED_MANIFEST.json`. All four benchmark streams are
+generated **self-contained**, so the full artifact runs offline with no
+external dataset download. Each preserves the dimensionality, class
+imbalance, and workload structure of its real-world reference.
 
-### Datasets
-
-The artifact uses two evidence tiers:
-
-| Tier | Entrypoint | Purpose |
-|:---|:---|:---|
-| **Real-data pipeline** | `experiments/experiments_ae.py` | SECOM, APS Failure, synthetic drift, and ATC corpora with Macro-F1, Balanced Accuracy, and Admission Efficiency outputs |
-| **Self-contained stress tests** | `experiments/rail_paper.py` | Generated SECOM-like, APS-like, ATC-like, and synthetic streams for fast reproducibility and stronger baseline comparisons |
+### Benchmark streams
 
 <table>
 <thead>
 <tr>
-  <th>Dataset</th>
-  <th>Domain</th>
+  <th>Stream</th>
+  <th>Reference domain</th>
   <th>Task</th>
   <th>Features</th>
   <th>Notes</th>
@@ -292,54 +289,63 @@ The artifact uses two evidence tiers:
 </thead>
 <tbody>
 <tr>
-  <td><strong>SECOM</strong></td>
+  <td><strong>Synthetic</strong></td>
+  <td>Controlled drift + workload</td>
+  <td>4-class</td>
+  <td>12</td>
+  <td>Drift-and-workload generator used to stress the contamination mechanism</td>
+</tr>
+<tr>
+  <td><strong>SECOM-like</strong></td>
   <td>Semiconductor manufacturing</td>
   <td>Binary (pass/fail)</td>
   <td>590</td>
-  <td>High missingness; median-imputed</td>
+  <td>High-dimensional, severe class imbalance</td>
 </tr>
 <tr>
-  <td><strong>APS Failure</strong></td>
+  <td><strong>APS-like</strong></td>
   <td>Predictive maintenance (Scania trucks)</td>
   <td>Binary (neg/pos)</td>
   <td>170</td>
-  <td>Combined train + test splits</td>
+  <td>Sparse industrial-fault proxy, rare positives</td>
 </tr>
 <tr>
-  <td><strong>Synthetic Stream</strong></td>
-  <td>Controlled concept drift</td>
-  <td>Binary</td>
-  <td>40</td>
-  <td>Two hard regime shifts at 35 % and 70 %; class imbalance; workload spikes</td>
-</tr>
-<tr>
-  <td><strong>ATC (Air Traffic Control)</strong></td>
-  <td>Spoken language / NLP</td>
+  <td><strong>ATC-like</strong></td>
+  <td>Air-traffic-control communications</td>
   <td>Multi-class intent (4 classes)</td>
-  <td>TF-IDF</td>
-  <td>Hugging Face corpora; pilot → controller utterance pairs</td>
+  <td>—</td>
+  <td>Intent stream inspired by ATC pilot → controller exchanges</td>
 </tr>
 </tbody>
 </table>
 
-### Running the Experiments
+### Running the experiments
 
 ```bash
 # Install dependencies
 python -m pip install -e ".[experiments,dev]"
 
-# Run the full publication pipeline
-python experiments/run_publication.py --mode both --runs 20 --seed 7
+# Quick sanity check (~30 s)
+python -m experiments.reproduce_paper --tier smoke --workers 2 --fast
 
-# Run the fast self-contained pipeline only
-python experiments/run_publication.py --mode self-contained --runs 20 --seed 7
+# Headline tier: 30 seeds, all stages (paper numbers)
+python -m experiments.reproduce_paper --tier headline --workers 8 --slow
 
-# Run tests for the shared vigilance score
+# Regenerate the two main-text figures from a completed headline run
+python -m experiments.make_main_figures \
+    --data publication_outputs/self_contained_v3 \
+    --out publication_outputs/main_figures
+
+# Run tests for the shared vigilance score and statistics
 pytest
 
 # Aggregate exported activity reports from user studies
-python experiments/activity_report.py path/to/activity-reports --output-dir publication_outputs/activity
+python -m experiments.activity_report path/to/activity-reports \
+    --output-dir publication_outputs/activity
 ```
+
+See `RUN.md` for every tier, the timing breakdown, and the backend
+validation note.
 
 Results are saved below `./publication_outputs/` with a `run_manifest.json` containing the run mode, seed, Python version, platform, and output locations. The canonical runner also writes `JOURNAL_ARTIFACTS.md`, a reviewer-facing index of generated figures, tables, and metadata. Figures are emitted as 600 DPI PNG files plus PDF/SVG vector masters where possible.
 
@@ -361,11 +367,18 @@ publication_outputs/
     table_tradeoff.tex
     table_tradeoff.csv
     table_tradeoff.md
+    table_rail_macro_f1_audit.csv/.md
+    table_rail_ae_audit.csv/.md
   activity/
     activity_session_summary.csv
     activity_condition_summary.csv
     activity_summary.json
 ```
+
+The RAIL audit tables identify the best method and the best RAIL-family method
+per dataset for Macro-F1 and Admission Efficiency. They are intended as an
+honest claim check for manuscript wording; the pipeline does not overwrite or
+alter empirical outcomes.
 
 ### Simulated Operator Telemetry
 
@@ -435,16 +448,22 @@ rail/
 │   ├── app.html              #   ↳ single-file operator dashboard
 │   ├── config.json           #   ↳ demo MQTT configuration
 │   └── data.csv              #   ↳ demo CSV stream
-├── experiments/              # Decay prevention experiment harness
+├── experiments/              # Reproduction harness
 │   ├── rail_core.py          #   ↳ shared admission-score reference
-│   ├── run_publication.py    #   ↳ canonical publication runner
-│   ├── experiments_ae.py     #   ↳ real-data pipeline
-│   └── rail_paper.py         #   ↳ self-contained benchmark-like pipeline
-├── tests/                    # Shared scoring tests
+│   ├── reproduce_paper.py    #   ↳ single-command reproduction driver
+│   ├── rail_paper.py         #   ↳ self-contained streams + policies
+│   ├── baselines_integrated.py #  ↳ noise-robust baselines (ITLM, GCE, ...)
+│   ├── regime_sweep.py       #   ↳ 24-cell phase-diagram sweep
+│   ├── rail_stats.py         #   ↳ Friedman/Nemenyi/Wilcoxon + BCa/Cliff's δ
+│   ├── theory.py             #   ↳ closed-form contract/risk grid
+│   └── make_main_figures.py  #   ↳ main-text figure generator
+├── tests/                    # Test suite (pytest)
 ├── schemas/                  # JSON payload contracts
+├── paper/                    # LaTeX manuscript and figures
+├── SEED_MANIFEST.json        # Frozen seeds and run protocol
 ├── publication_outputs/      # Generated plots/tables/manifests (git-ignored)
-├── _cache/                   # Downloaded dataset cache (auto-created)
 ├── ARTIFACT.md
+├── RUN.md
 ├── CITATION.cff
 ├── pyproject.toml
 └── README.md

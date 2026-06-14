@@ -168,7 +168,7 @@ def contamination_contract(
     clean_feedback = total_feedback - contaminated_feedback
     admitted_feedback = sum(1 for ok in admitted if ok)
     contaminated_admissions = sum(
-        1 for ok, gate in zip(feedback_is_correct, admitted) if gate and not ok
+        1 for ok, gate in zip(feedback_is_correct, admitted, strict=False) if gate and not ok
     )
     clean_admissions = admitted_feedback - contaminated_admissions
     base_contamination_rate = contaminated_feedback / total_feedback if total_feedback else 0.0
@@ -209,7 +209,7 @@ def contamination_contract(
 class _P2Quantile:
     """Single P^2 quantile estimator (Jain & Chlamtac, CACM 1985)."""
 
-    __slots__ = ("p", "_n", "_q", "_npos", "_dpos_inc")
+    __slots__ = ("_dpos_inc", "_n", "_npos", "_q", "p")
 
     def __init__(self, p: float) -> None:
         if not 0.0 < p < 1.0:
@@ -274,8 +274,8 @@ class _P2Quantile:
         if self._n < 5:
             ordered = sorted(self._q)
             idx = self.p * (len(ordered) - 1)
-            lo = int(math.floor(idx))
-            hi = int(math.ceil(idx))
+            lo = math.floor(idx)
+            hi = math.ceil(idx)
             if lo == hi:
                 return float(ordered[lo])
             frac = idx - lo
@@ -292,8 +292,8 @@ class OnlineBurnInCalibrator:
     """Streaming calibrator that recovers (tau_min, tau_max) online."""
 
     min_samples: int = 300
-    low: float = 0.10
-    high: float = 0.90
+    low: float = 0.25
+    high: float = 0.85
     min_floor: float = 0.3
     max_ceiling: float = 30.0
     _low_estimator: _P2Quantile = field(init=False, repr=False)
@@ -354,8 +354,8 @@ class OnlineBurnInCalibrator:
 
 def burn_in_window_from_samples(
     deltas: Sequence[float],
-    low: float = 0.10,
-    high: float = 0.90,
+    low: float = 0.25,
+    high: float = 0.85,
     min_floor: float = 0.3,
     max_ceiling: float = 30.0,
 ) -> tuple[float, float]:
@@ -367,8 +367,8 @@ def burn_in_window_from_samples(
 
     def _q(p: float) -> float:
         idx = p * (len(sorted_d) - 1)
-        lo_i = int(math.floor(idx))
-        hi_i = int(math.ceil(idx))
+        lo_i = math.floor(idx)
+        hi_i = math.ceil(idx)
         if lo_i == hi_i:
             return sorted_d[lo_i]
         frac = idx - lo_i

@@ -51,7 +51,9 @@ def _sample_report(participant_id="P001", condition="rail"):
                 "content_summary": {"abs_error": 0.3},
             },
         ],
-        "events": [{"id": 1, "at": "2026-05-23T10:00:01.000Z", "type": "recording_started", "details": {}}],
+        "events": [
+            {"id": 1, "at": "2026-05-23T10:00:01.000Z", "type": "recording_started", "details": {}}
+        ],
     }
 
 
@@ -72,15 +74,23 @@ def test_summarize_report_extracts_study_metadata(tmp_path):
 def test_aggregate_reports_writes_session_and_condition_outputs(tmp_path):
     input_dir = tmp_path / "reports"
     input_dir.mkdir()
-    (input_dir / "rail-activity-report_1.json").write_text(json.dumps(_sample_report("P001", "rail")), encoding="utf-8")
-    (input_dir / "rail-activity-report_2.json").write_text(json.dumps(_sample_report("P002", "baseline")), encoding="utf-8")
+    (input_dir / "rail-activity-report_1.json").write_text(
+        json.dumps(_sample_report("P001", "rail")), encoding="utf-8"
+    )
+    (input_dir / "rail-activity-report_2.json").write_text(
+        json.dumps(_sample_report("P002", "baseline")), encoding="utf-8"
+    )
 
     output_dir = tmp_path / "out"
     result = aggregate_reports([input_dir], output_dir)
 
     assert result["reports"] == 2
-    session_rows = list(csv.DictReader((output_dir / "activity_session_summary.csv").open(encoding="utf-8")))
-    condition_rows = list(csv.DictReader((output_dir / "activity_condition_summary.csv").open(encoding="utf-8")))
+    session_rows = list(
+        csv.DictReader((output_dir / "activity_session_summary.csv").open(encoding="utf-8"))
+    )
+    condition_rows = list(
+        csv.DictReader((output_dir / "activity_condition_summary.csv").open(encoding="utf-8"))
+    )
 
     assert len(session_rows) == 2
     assert {row["condition"] for row in condition_rows} == {"baseline", "rail"}

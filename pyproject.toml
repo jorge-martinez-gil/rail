@@ -10,14 +10,16 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [
-  { name = "Jorge Martinez-Gil" }
+  { name = "Jorge Martinez-Gil" },
+  { name = "Isaac Lera" }
 ]
 keywords = [
   "human-in-the-loop",
   "stream analytics",
+  "admission control",
+  "noisy labels",
   "online learning",
-  "data quality",
-  "knowledge engineering"
+  "concept drift"
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -30,9 +32,7 @@ experiments = [
   "numpy>=1.24",
   "pandas>=2.0",
   "scikit-learn>=1.3",
-  "river>=0.21",
-  "matplotlib>=3.7",
-  "datasets>=2.18"
+  "matplotlib>=3.7"
 ]
 dev = [
   "pytest>=8.0",
@@ -40,7 +40,7 @@ dev = [
 ]
 
 [project.scripts]
-rail-publication = "experiments.run_publication:main"
+rail-reproduce = "experiments.reproduce_paper:main"
 rail-activity-report = "experiments.activity_report:main"
 
 [tool.setuptools]
@@ -55,13 +55,7 @@ addopts = "-q --basetemp=.pytest-tmp"
 line-length = 100
 target-version = "py310"
 extend-exclude = [
-  "experiments/experiments.py",
-  "experiments/experiments_ae.py",
   "experiments/rail_paper.py",
-  "experiments/rail_one_run.py",
-  "experiments/activity_report.py",
-  "experiments/publication_artifacts.py",
-  "experiments/run_publication.py",
 ]
 
 [tool.ruff.lint]

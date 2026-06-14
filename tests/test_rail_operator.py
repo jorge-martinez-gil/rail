@@ -8,7 +8,6 @@ from experiments.rail_core import (
     contamination_contract,
 )
 from experiments.rail_operator import (
-    AdmissionDecision,
     InteractionEvent,
     RailOperator,
     flink_map_function,

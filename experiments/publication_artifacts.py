@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -49,7 +50,13 @@ METHOD_MARKERS = {
     "margin_gated": "P",
     "rail_gated": "X",
     "rail_weighted": "*",
+    "STATIC": "o",
+    "ALWAYS": "s",
+    "GATED": "X",
+    "WEIGHTED": "*",
 }
+
+RAIL_METHODS = frozenset({"rail_gated", "rail_weighted", "GATED", "WEIGHTED"})
 
 
 def configure_matplotlib() -> None:
@@ -60,18 +67,29 @@ def configure_matplotlib() -> None:
             "figure.dpi": 180,
             "savefig.dpi": PUBLICATION_DPI,
             "savefig.facecolor": "white",
+            "savefig.pad_inches": 0.03,
             "font.family": "DejaVu Sans",
-            "font.size": 10,
-            "axes.titlesize": 11,
-            "axes.labelsize": 10,
-            "axes.linewidth": 0.75,
+            "font.size": 9.0,
+            "axes.titlesize": 9.6,
+            "axes.titleweight": "semibold",
+            "axes.labelsize": 9.0,
+            "axes.linewidth": 0.7,
             "axes.spines.top": False,
             "axes.spines.right": False,
-            "legend.fontsize": 8.5,
+            "axes.axisbelow": True,
+            "legend.fontsize": 8.4,
             "legend.frameon": False,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "grid.linewidth": 0.45,
+            "legend.handlelength": 1.35,
+            "legend.handletextpad": 0.35,
+            "legend.columnspacing": 0.9,
+            "xtick.labelsize": 8.2,
+            "ytick.labelsize": 8.2,
+            "xtick.major.width": 0.65,
+            "ytick.major.width": 0.65,
+            "xtick.major.size": 3.0,
+            "ytick.major.size": 3.0,
+            "grid.color": "#9A9A9A",
+            "grid.linewidth": 0.42,
             "grid.alpha": 0.28,
             "lines.linewidth": 2.0,
             "lines.markersize": 5,
@@ -92,6 +110,22 @@ def method_color(method: str) -> str:
     """Return a color-blind-aware color for a policy or method id."""
 
     return METHOD_COLORS.get(method, "#333333")
+
+
+def method_is_rail(method: str) -> bool:
+    """Return whether a method id belongs to the RAIL method family."""
+
+    return method in RAIL_METHODS or method.lower() in RAIL_METHODS
+
+
+def style_panel_axis(ax: plt.Axes, grid_axis: str = "both") -> None:
+    """Apply a consistent journal panel style to an axes object."""
+
+    ax.grid(True, axis=grid_axis)
+    ax.tick_params(direction="out")
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#222222")
+        ax.spines[spine].set_linewidth(0.7)
 
 
 def save_publication_figure(
@@ -147,6 +181,108 @@ def write_markdown_table(df: pd.DataFrame, path: str | Path) -> str:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(dataframe_to_markdown(df), encoding="utf-8")
     return str(out)
+
+
+def build_winner_audit(
+    df: pd.DataFrame,
+    metric_col: str,
+    group_col: str = "dataset",
+    method_col: str = "method",
+    greater_is_better: bool = True,
+    tie_tol: float = 1e-12,
+) -> pd.DataFrame:
+    """Build an honest best-method audit, including the best RAIL-family method.
+
+    The audit does not change any result. It simply records whether at least one
+    RAIL method is tied for the best value within each group.
+    """
+
+    required = {group_col, method_col, metric_col}
+    missing = required.difference(df.columns)
+    if missing:
+        raise KeyError(f"winner audit missing column(s): {sorted(missing)}")
+
+    rows: list[dict[str, Any]] = []
+    for group, subset in df.groupby(group_col, sort=False):
+        work = subset[[method_col, metric_col]].copy()
+        work[metric_col] = pd.to_numeric(work[metric_col], errors="coerce")
+        work = work.dropna(subset=[metric_col])
+        if work.empty:
+            continue
+
+        idx = work[metric_col].idxmax() if greater_is_better else work[metric_col].idxmin()
+        best_value = float(work.loc[idx, metric_col])
+        if greater_is_better:
+            best_mask = work[metric_col] >= best_value - tie_tol
+        else:
+            best_mask = work[metric_col] <= best_value + tie_tol
+        best_methods = [str(v) for v in work.loc[best_mask, method_col]]
+
+        rail_work = work[work[method_col].map(lambda method: method_is_rail(str(method)))]
+        if rail_work.empty:
+            best_rail_method = ""
+            best_rail_value = float("nan")
+            rail_family_wins = False
+            margin = float("nan")
+        else:
+            rail_idx = (
+                rail_work[metric_col].idxmax()
+                if greater_is_better
+                else rail_work[metric_col].idxmin()
+            )
+            best_rail_method = str(rail_work.loc[rail_idx, method_col])
+            best_rail_value = float(rail_work.loc[rail_idx, metric_col])
+            rail_family_wins = method_is_rail(best_rail_method) and (
+                best_rail_method in best_methods
+            )
+            margin = (
+                best_rail_value - best_value if greater_is_better else best_value - best_rail_value
+            )
+
+        rows.append(
+            {
+                group_col: group,
+                "metric": metric_col,
+                "best_method": ", ".join(best_methods),
+                "best_value": best_value,
+                "best_rail_method": best_rail_method,
+                "best_rail_value": best_rail_value,
+                "rail_family_wins": rail_family_wins,
+                "rail_margin_to_best": margin,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def write_winner_audit(
+    df: pd.DataFrame,
+    stem: str | Path,
+    metric_col: str,
+    group_col: str = "dataset",
+    method_col: str = "method",
+    greater_is_better: bool = True,
+) -> pd.DataFrame:
+    """Write CSV and Markdown views of :func:`build_winner_audit`."""
+
+    audit = build_winner_audit(
+        df,
+        metric_col=metric_col,
+        group_col=group_col,
+        method_col=method_col,
+        greater_is_better=greater_is_better,
+    )
+    path = Path(stem)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    audit.to_csv(path.with_suffix(".csv"), index=False)
+
+    display = audit.copy()
+    for col in ("best_value", "best_rail_value", "rail_margin_to_best"):
+        display[col] = display[col].map(lambda v: "" if pd.isna(v) else f"{float(v):.4f}")
+    display["rail_family_wins"] = display["rail_family_wins"].map(
+        lambda v: "yes" if bool(v) else "no"
+    )
+    write_markdown_table(display, path.with_suffix(".md"))
+    return audit
 
 
 def _artifact_kind(path: Path) -> str:

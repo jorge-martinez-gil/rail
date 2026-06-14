@@ -39,8 +39,9 @@ from __future__ import annotations
 import math
 import time
 from collections import deque
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Deque, Iterable, Literal, Mapping
+from typing import Any, Literal
 
 try:
     from .rail_core import (
@@ -160,7 +161,7 @@ class RailOperator:
     _events_seen: int = field(default=0, init=False, repr=False)
     _events_admitted: int = field(default=0, init=False, repr=False)
     _window_swapped: bool = field(default=False, init=False, repr=False)
-    _audit: Deque[AdmissionDecision] = field(
+    _audit: deque[AdmissionDecision] = field(
         default_factory=lambda: deque(maxlen=0), init=False, repr=False
     )
 
@@ -258,9 +259,7 @@ class RailOperator:
 
         return decision
 
-    def process_batch(
-        self, events: Iterable[InteractionEvent]
-    ) -> list[AdmissionDecision]:
+    def process_batch(self, events: Iterable[InteractionEvent]) -> list[AdmissionDecision]:
         return [self.process(ev) for ev in events]
 
     # ---------------------------------------------------------- checkpointing
@@ -395,16 +394,12 @@ def synthesise_events(
     for i in range(n):
         if rng.random() < contamination_rate:
             # Contaminated: reflexive or stalled.
-            delta = rng.choice(
-                [rng.uniform(0.05, 0.4), rng.uniform(10.0, 25.0)]
-            )
+            delta = rng.choice([rng.uniform(0.05, 0.4), rng.uniform(10.0, 25.0)])
             is_correct = False
             edits = 0
             focus = 0.1
         else:
-            delta = max(
-                0.05, rng.lognormvariate(math.log(clean_delta_mean), clean_delta_sd)
-            )
+            delta = max(0.05, rng.lognormvariate(math.log(clean_delta_mean), clean_delta_sd))
             is_correct = True
             edits = rng.choice([0, 1, 1, 2])
             focus = max(0.1, delta - rng.uniform(0.2, 0.8))

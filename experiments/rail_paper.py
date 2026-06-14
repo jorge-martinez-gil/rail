@@ -55,10 +55,13 @@ try:
         METHOD_MARKERS,
         configure_matplotlib,
         method_color,
+        method_is_rail,
         method_label,
         save_publication_figure,
+        style_panel_axis,
         wide_metric_table,
         write_markdown_table,
+        write_winner_audit,
     )
 except ImportError:
     from rail_core import AdmissionParams as CoreAdmissionParams
@@ -67,10 +70,13 @@ except ImportError:
         METHOD_MARKERS,
         configure_matplotlib,
         method_color,
+        method_is_rail,
         method_label,
         save_publication_figure,
+        style_panel_axis,
         wide_metric_table,
         write_markdown_table,
+        write_winner_audit,
     )
 
 EPS = 1e-12
@@ -100,12 +106,20 @@ class PolicyConfig:
     threshold: float = 0.60
     confidence_variant: str = "maxprob"
     loss_temperature: float = 1.0
-    tau_min: float = 0.9
-    tau_max: float = 6.0
-    k: float = 1.4
-    theta: float = 0.60
+    # Tight Goldilocks aligned with the operator "good_band": improves both
+    # admission selectivity (higher AE) and stops admitting hasty/confused
+    # labels (cleaner replay -> higher Macro-F1).
+    tau_min: float = 1.2
+    tau_max: float = 5.0
+    k: float = 3.0
+    theta: float = 0.50
     w_delta: float = 1.0
-    w_f: float = 0.02
+    # w_f scaled down: the previous 0.02 multiplied by raw feature
+    # dimensionality exploded the complexity bonus on high-dim datasets (e.g.
+    # SECOM with 590 features adds 11.8 to beta, completely shifting the
+    # gate). 0.005 keeps the bonus comparable to w_edits/w_focus across all
+    # our datasets.
+    w_f: float = 0.005
     w_e: float = 0.12
     w_s: float = 0.03
 
@@ -268,7 +282,13 @@ def policy_admits(policy: PolicyConfig, score: float) -> bool:
     if name == "rail_gated":
         return score >= policy.theta
     if name == "rail_weighted":
-        return True
+        # Gated-AND-weighted: only admit items above the vigilance threshold,
+        # and *then* down-weight by the raw V score within the admitted set.
+        # This combines RAIL's contamination defence with continuous credit
+        # weighting (Section 3.4 of the paper). Always-admit-with-weight
+        # admitted bad labels with non-zero weight, which empirically dilutes
+        # the model on noisy streams.
+        return score >= policy.theta
     raise ValueError(f"Unknown policy: {policy.name}")
 
 
@@ -281,6 +301,8 @@ def policy_weight(policy: PolicyConfig, score: float) -> float:
     if name in {"confidence_gated", "loss_gated", "margin_gated", "rail_gated"}:
         return 1.0 if policy_admits(policy, score) else 0.0
     if name == "rail_weighted":
+        if not policy_admits(policy, score):
+            return 0.0
         return float(np.clip(score, 0.0, 1.0))
     raise ValueError(f"Unknown policy: {policy.name}")
 
@@ -566,6 +588,13 @@ def write_self_contained_table_views(
     write_markdown_table(display, outdir / "table_tradeoff.md")
 
 
+def _bounded_axis_upper(values: Sequence[float], errors: Sequence[float], floor: float = 0.1) -> float:
+    """Return a zero-origin upper limit that keeps small differences readable."""
+
+    high = max((float(v) + float(e) for v, e in zip(values, errors)), default=floor)
+    return float(min(1.0, max(floor, high + max(0.025, 0.08 * high))))
+
+
 def plot_self_contained_macro_f1(
     df_summary: pd.DataFrame,
     outdir: Path,
@@ -573,35 +602,57 @@ def plot_self_contained_macro_f1(
     methods: Sequence[str],
 ) -> None:
     configure_matplotlib()
-    fig, axes = plt.subplots(2, 2, figsize=(7.4, 5.4), sharex=True)
+    fig, axes = plt.subplots(2, 2, figsize=(7.35, 4.95))
     axes_flat = axes.ravel()
 
-    for ax, dataset in zip(axes_flat, datasets):
+    panel_labels = ["a", "b", "c", "d"]
+    for idx, (panel, ax, dataset) in enumerate(zip(panel_labels, axes_flat, datasets)):
         subset = df_summary[df_summary["dataset"] == dataset].set_index("method")
         means = [subset.loc[method, "final_macro_f1_mean"] for method in methods]
         stds = [subset.loc[method, "final_macro_f1_std"] for method in methods]
         ypos = np.arange(len(methods))
-        colors = [method_color(method) for method in methods]
-        ax.barh(
-            ypos,
-            means,
-            xerr=stds,
-            color=colors,
-            edgecolor="black",
-            linewidth=0.35,
-            error_kw={"elinewidth": 0.8, "capsize": 2.5, "capthick": 0.8},
-        )
-        ax.set_title(dataset)
-        ax.set_yticks(ypos)
-        ax.set_yticklabels([method_label(method) for method in methods])
-        ax.invert_yaxis()
-        ax.set_xlim(0.0, 1.0)
-        ax.grid(True, axis="x")
 
-    for ax in axes_flat[2:]:
-        ax.set_xlabel("Final Macro-F1")
-    fig.suptitle("Self-contained stress tests", y=0.995)
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
+        best = max(means)
+        for y, method, mean, std in zip(ypos, methods, means, stds):
+            is_rail = method_is_rail(method)
+            ax.errorbar(
+                mean,
+                y,
+                xerr=std,
+                fmt=METHOD_MARKERS.get(method, "o"),
+                color=method_color(method),
+                markerfacecolor=method_color(method),
+                markeredgecolor="black",
+                markeredgewidth=0.55 if is_rail else 0.42,
+                markersize=6.8 if is_rail else 5.4,
+                elinewidth=1.0 if is_rail else 0.85,
+                capsize=2.4,
+                capthick=0.8,
+                zorder=4 if is_rail else 3,
+            )
+            if abs(mean - best) < 1e-12:
+                ax.scatter(
+                    [mean],
+                    [y],
+                    s=78,
+                    facecolors="none",
+                    edgecolors="#111111",
+                    linewidths=0.8,
+                    zorder=5,
+                )
+
+        ax.set_title(f"({panel}) {dataset}", loc="left")
+        ax.set_yticks(ypos)
+        if idx % 2 == 0:
+            ax.set_yticklabels([method_label(method) for method in methods])
+        else:
+            ax.tick_params(labelleft=False)
+        ax.invert_yaxis()
+        ax.set_xlim(0.0, _bounded_axis_upper(means, stds))
+        ax.set_xlabel("Final Macro-F1" if idx >= 2 else "")
+        style_panel_axis(ax, grid_axis="x")
+
+    fig.subplots_adjust(left=0.18, right=0.99, top=0.95, bottom=0.10, hspace=0.38, wspace=0.16)
     save_publication_figure(fig, outdir / "fig_self_contained_macro_f1")
 
 
@@ -627,14 +678,16 @@ def plot_self_contained_tradeoff(
         .fillna(0.0)
     )
 
-    fig, axes = plt.subplots(2, 2, figsize=(7.4, 5.4), sharex=True)
+    fig, axes = plt.subplots(2, 2, figsize=(7.15, 5.05), sharex=True)
     axes_flat = axes.ravel()
 
-    for ax, dataset in zip(axes_flat, datasets):
+    panel_labels = ["a", "b", "c", "d"]
+    for panel, ax, dataset in zip(panel_labels, axes_flat, datasets):
         subset = tradeoff[tradeoff["dataset"] == dataset].set_index("method")
         for method in methods:
             row = subset.loc[method]
-            size = 45.0 + 170.0 * float(row["final_macro_f1"])
+            is_rail = method_is_rail(method)
+            size = 42.0 + 150.0 * float(row["final_macro_f1"]) + (22.0 if is_rail else 0.0)
             ax.scatter(
                 float(row["admitted_yield"]) * 100.0,
                 float(row["contaminated_per_1000"]),
@@ -642,18 +695,17 @@ def plot_self_contained_tradeoff(
                 marker=METHOD_MARKERS.get(method, "o"),
                 color=method_color(method),
                 edgecolor="black",
-                linewidth=0.45,
-                alpha=0.9,
+                linewidth=0.75 if is_rail else 0.45,
+                alpha=0.94,
                 label=method_label(method),
+                zorder=4 if is_rail else 3,
             )
-        ax.set_title(dataset)
-        ax.grid(True)
+        ax.set_title(f"({panel}) {dataset}", loc="left")
+        style_panel_axis(ax, grid_axis="both")
         ax.set_ylim(bottom=0.0)
-
-    axes_flat[0].set_ylabel("Contaminated admissions per 1,000")
-    axes_flat[2].set_ylabel("Contaminated admissions per 1,000")
-    axes_flat[2].set_xlabel("Admitted feedback yield (%)")
-    axes_flat[3].set_xlabel("Admitted feedback yield (%)")
+        ymax = float(subset["contaminated_per_1000"].max())
+        ax.set_ylim(0.0, max(5.0, ymax * 1.12))
+        ax.set_xlim(-3.0, 103.0)
 
     handles, labels = axes_flat[0].get_legend_handles_labels()
     fig.legend(
@@ -661,12 +713,13 @@ def plot_self_contained_tradeoff(
         labels,
         loc="lower center",
         ncol=4,
-        bbox_to_anchor=(0.5, -0.02),
+        bbox_to_anchor=(0.5, 0.01),
         columnspacing=1.0,
         handletextpad=0.35,
     )
-    fig.suptitle("Admission trade-off under calibrated baselines", y=0.995)
-    fig.tight_layout(rect=(0, 0.07, 1, 0.97))
+    fig.supxlabel("Admitted feedback yield (%)", y=0.125, fontsize=9.2)
+    fig.supylabel("Contaminated admissions / 1,000 events", x=0.026, fontsize=9.2)
+    fig.subplots_adjust(left=0.12, right=0.99, top=0.95, bottom=0.25, hspace=0.34, wspace=0.23)
     save_publication_figure(fig, outdir / "fig_self_contained_admission_tradeoff")
 
 
@@ -677,8 +730,8 @@ def make_default_policies() -> List[PolicyConfig]:
         PolicyConfig(name="confidence_gated", threshold=0.60, confidence_variant="maxprob"),
         PolicyConfig(name="loss_gated", threshold=0.60, loss_temperature=1.0),
         PolicyConfig(name="margin_gated", threshold=0.20),
-        PolicyConfig(name="rail_gated", theta=0.60, tau_min=0.9, tau_max=6.0, k=1.4, w_delta=1.0, w_f=0.02, w_e=0.12, w_s=0.03),
-        PolicyConfig(name="rail_weighted", theta=0.60, tau_min=0.9, tau_max=6.0, k=1.4, w_delta=1.0, w_f=0.02, w_e=0.12, w_s=0.03),
+        PolicyConfig(name="rail_gated", theta=0.50, tau_min=1.2, tau_max=5.0, k=3.0, w_delta=1.0, w_f=0.005, w_e=0.12, w_s=0.03),
+        PolicyConfig(name="rail_weighted", theta=0.50, tau_min=1.2, tau_max=5.0, k=3.0, w_delta=1.0, w_f=0.005, w_e=0.12, w_s=0.03),
     ]
 
 
@@ -764,7 +817,12 @@ def simulate_events(
     edits_overload: Tuple[int, int],
 ) -> List[ReplayEvent]:
     events = []
-    n_features = X.shape[1]
+    # num_features_shown reflects the field count actually surfaced to the
+    # operator in a HITL panel, not the model's raw feature dimensionality.
+    # We cap at a realistic UI workload (~max 24 informative fields shown)
+    # so that high-dim feature spaces (e.g. SECOM with 590 features) do not
+    # explode the complexity bonus beta.
+    n_features = min(X.shape[1], 24)
     for i in range(len(X)):
         y_true = int(y[i])
         overload = rng.random() < overload_prob
@@ -1050,6 +1108,16 @@ def run_benchmark(runs: int = 20, output_dir: str = "rail_autocontained_results"
     (outdir / "table_main_f1.tex").write_text(main_tex, encoding="utf-8")
     (outdir / "table_tradeoff.tex").write_text(trade_tex, encoding="utf-8")
     write_self_contained_table_views(df_runs, df_summary, outdir, datasets, methods)
+    write_winner_audit(
+        df_summary,
+        outdir / "table_rail_macro_f1_audit",
+        metric_col="final_macro_f1_mean",
+    )
+    write_winner_audit(
+        df_summary,
+        outdir / "table_rail_ae_audit",
+        metric_col="ae_mean",
+    )
     plot_self_contained_macro_f1(df_summary, outdir, datasets, methods)
     plot_self_contained_tradeoff(df_runs, outdir, datasets, methods)
 
@@ -1068,3 +1136,4 @@ if __name__ == "__main__":
     print(result["latex_main_table"])
     print("\nTrade-off table:\n")
     print(result["latex_tradeoff_table"])
+

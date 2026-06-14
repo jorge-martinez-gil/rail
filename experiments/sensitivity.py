@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import asdict, dataclass
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
 
 try:
     from .rail_core import (
@@ -210,9 +210,7 @@ def synthetic_sweep_demo(
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    events = synthesise_events(
-        n=n_events, seed=seed, contamination_rate=contamination_rate
-    )
+    events = synthesise_events(n=n_events, seed=seed, contamination_rate=contamination_rate)
     sweep = sweep_grid(events)
     sweep_path = write_sweep_csv(sweep, output_dir / "rail_sensitivity_sweep.csv")
     frontier = theta_only_pareto(events)
@@ -223,8 +221,8 @@ def synthetic_sweep_demo(
 __all__ = [
     "SweepRow",
     "sweep_grid",
-    "theta_only_pareto",
-    "write_sweep_csv",
-    "write_pareto_json",
     "synthetic_sweep_demo",
+    "theta_only_pareto",
+    "write_pareto_json",
+    "write_sweep_csv",
 ]

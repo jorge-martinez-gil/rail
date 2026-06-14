@@ -89,7 +89,7 @@ def test_holm_bonferroni_monotone_and_clamped():
     adj = holm_bonferroni(ps)
     assert all(0.0 <= a <= 1.0 for a in adj)
     # Holm: smallest p multiplied by m=4, next by 3, etc.
-    sorted_pairs = sorted(zip(ps, adj))
+    sorted_pairs = sorted(zip(ps, adj, strict=False))
     sorted_adj = [a for _, a in sorted_pairs]
     assert all(sorted_adj[i] <= sorted_adj[i + 1] for i in range(len(sorted_adj) - 1))
 

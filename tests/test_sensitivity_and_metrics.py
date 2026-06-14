@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from experiments.metrics import (
     admission_yield_loss,
     burn_in_estimator_from_paper,

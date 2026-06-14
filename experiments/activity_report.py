@@ -6,10 +6,11 @@ import argparse
 import csv
 import json
 import math
-from dataclasses import dataclass, asdict
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean, median, stdev
-from typing import Any, Iterable
+from typing import Any
 
 
 def _safe_float(value: Any) -> float | None:
@@ -133,7 +134,11 @@ def iter_report_paths(input_paths: Iterable[Path]) -> list[Path]:
 
 def write_session_csv(summaries: list[SessionSummary], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = list(asdict(summaries[0]).keys()) if summaries else list(SessionSummary.__annotations__.keys())
+    fieldnames = (
+        list(asdict(summaries[0]).keys())
+        if summaries
+        else list(SessionSummary.__annotations__.keys())
+    )
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -156,19 +161,27 @@ def group_by_condition(summaries: list[SessionSummary]) -> list[dict[str, Any]]:
                 "rows_total": sum(i.rows_total for i in items),
                 "rows_decided": sum(i.rows_decided for i in items),
                 "eligible_non_ok": sum(i.eligible_non_ok for i in items),
-                "mean_decision_rate": mean([i.decision_rate for i in items if i.decision_rate is not None])
+                "mean_decision_rate": mean(
+                    [i.decision_rate for i in items if i.decision_rate is not None]
+                )
                 if any(i.decision_rate is not None for i in items)
                 else None,
-                "mean_vigilance": mean([i.mean_vigilance for i in items if i.mean_vigilance is not None])
+                "mean_vigilance": mean(
+                    [i.mean_vigilance for i in items if i.mean_vigilance is not None]
+                )
                 if any(i.mean_vigilance is not None for i in items)
                 else None,
                 "mean_delta_s": mean([i.mean_delta_s for i in items if i.mean_delta_s is not None])
                 if any(i.mean_delta_s is not None for i in items)
                 else None,
-                "mean_focus_ms": mean([i.mean_focus_ms for i in items if i.mean_focus_ms is not None])
+                "mean_focus_ms": mean(
+                    [i.mean_focus_ms for i in items if i.mean_focus_ms is not None]
+                )
                 if any(i.mean_focus_ms is not None for i in items)
                 else None,
-                "mean_edit_count": mean([i.mean_edit_count for i in items if i.mean_edit_count is not None])
+                "mean_edit_count": mean(
+                    [i.mean_edit_count for i in items if i.mean_edit_count is not None]
+                )
                 if any(i.mean_edit_count is not None for i in items)
                 else None,
             }
@@ -222,7 +235,9 @@ def aggregate_reports(input_paths: Iterable[Path], output_dir: Path) -> dict[str
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Aggregate RAIL activity report JSON exports.")
-    parser.add_argument("inputs", nargs="+", type=Path, help="Activity report JSON files or directories.")
+    parser.add_argument(
+        "inputs", nargs="+", type=Path, help="Activity report JSON files or directories."
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("publication_outputs/activity"))
     return parser
 

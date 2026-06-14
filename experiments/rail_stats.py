@@ -1,8 +1,8 @@
 """Publication-grade statistics for the RAIL experiments.
 
-The paper reports mean +/- standard deviation over 20 independent runs and
-applies a paired Wilcoxon signed-rank test on key comparisons. For a DKE
-submission we strengthen this with:
+The paper reports mean +/- standard deviation over 30 independent seeds and
+applies a paired Wilcoxon signed-rank test on key comparisons. For the
+Information Systems submission we strengthen this with:
 
 * :func:`bootstrap_ci` -- percentile and BCa confidence intervals.
 * :func:`paired_difference_ci` -- paired bootstrap of the mean difference.
@@ -34,10 +34,9 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from statistics import mean, median, stdev
-from typing import Iterable
 
 try:  # NumPy is optional.
     import numpy as _np
@@ -156,7 +155,7 @@ def paired_difference_ci(
 
     if len(a) != len(b):
         raise ValueError("a and b must have the same length")
-    diffs = [ai - bi for ai, bi in zip(a, b)]
+    diffs = [ai - bi for ai, bi in zip(a, b, strict=False)]
     return bootstrap_ci(diffs, statistic="mean", iterations=iterations, level=level, seed=seed)
 
 
@@ -206,14 +205,14 @@ def rank_biserial(a: Sequence[float], b: Sequence[float]) -> float:
 
     if len(a) != len(b):
         raise ValueError("a and b must have the same length")
-    diffs = [ai - bi for ai, bi in zip(a, b)]
+    diffs = [ai - bi for ai, bi in zip(a, b, strict=False)]
     nz = [d for d in diffs if d != 0]
     if not nz:
         return 0.0
     ranks = _rankdata([abs(d) for d in nz])
     total = sum(ranks)
-    pos = sum(r for r, d in zip(ranks, nz) if d > 0)
-    neg = sum(r for r, d in zip(ranks, nz) if d < 0)
+    pos = sum(r for r, d in zip(ranks, nz, strict=False) if d > 0)
+    neg = sum(r for r, d in zip(ranks, nz, strict=False) if d < 0)
     if total == 0:
         return 0.0
     return (pos - neg) / total
@@ -244,7 +243,7 @@ def paired_wilcoxon(
     if alternative not in ("two-sided", "greater", "less"):
         raise ValueError("alternative must be one of two-sided, greater, less")
 
-    diffs = [ai - bi for ai, bi in zip(a, b)]
+    diffs = [ai - bi for ai, bi in zip(a, b, strict=False)]
     nz = [d for d in diffs if d != 0.0]
     n = len(nz)
     if n == 0:
@@ -252,8 +251,8 @@ def paired_wilcoxon(
 
     abs_nz = [abs(d) for d in nz]
     ranks = _rankdata(abs_nz)
-    w_pos = sum(r for r, d in zip(ranks, nz) if d > 0)
-    w_neg = sum(r for r, d in zip(ranks, nz) if d < 0)
+    w_pos = sum(r for r, d in zip(ranks, nz, strict=False) if d > 0)
+    w_neg = sum(r for r, d in zip(ranks, nz, strict=False) if d < 0)
     W = float(min(w_pos, w_neg))
 
     mean_w = n * (n + 1) / 4.0
@@ -364,9 +363,7 @@ def compute_statistical_report(
             raise ValueError(
                 f"policy {policy!r} has {len(vals)} runs but baseline has {len(base_vals)}"
             )
-        own_ci = bootstrap_ci(
-            vals, "mean", iterations=iterations, level=level, seed=seed
-        )
+        own_ci = bootstrap_ci(vals, "mean", iterations=iterations, level=level, seed=seed)
         diff_ci = paired_difference_ci(
             vals, base_vals, iterations=iterations, level=level, seed=seed + 1
         )
@@ -376,7 +373,9 @@ def compute_statistical_report(
         intermediate.append((policy, own_ci, diff_ci, cd, wx["r_rb"], wx["p_value"]))
 
     adjusted = holm_bonferroni(raw_ps)
-    for (policy, own_ci, diff_ci, cd, rb, p_raw), p_adj in zip(intermediate, adjusted):
+    for (policy, own_ci, diff_ci, cd, rb, p_raw), p_adj in zip(
+        intermediate, adjusted, strict=False
+    ):
         vals = list(results[policy])
         rows.append(
             ComparisonRow(
@@ -410,21 +409,7 @@ def report_to_markdown(rows: Sequence[ComparisonRow], baseline: str) -> str:
     lines = []
     for r in rows:
         lines.append(
-            "| `{p}` | {n} | {m:.4f} ± {sd:.4f} | [{lo:.4f}, {hi:.4f}] | {dm:+.4f} | [{dlo:+.4f}, {dhi:+.4f}] | {cd:+.3f} ({mag}) | {p1:.4f} | {p2:.4f} |".format(
-                p=r.policy,
-                n=r.n,
-                m=r.mean,
-                sd=r.sd,
-                lo=r.ci_lower,
-                hi=r.ci_upper,
-                dm=r.diff_mean,
-                dlo=r.diff_ci_lower,
-                dhi=r.diff_ci_upper,
-                cd=r.cliffs_delta,
-                mag=r.cliffs_magnitude,
-                p1=r.wilcoxon_p,
-                p2=r.wilcoxon_p_holm,
-            )
+            f"| `{r.policy}` | {r.n} | {r.mean:.4f} ± {r.sd:.4f} | [{r.ci_lower:.4f}, {r.ci_upper:.4f}] | {r.diff_mean:+.4f} | [{r.diff_ci_lower:+.4f}, {r.diff_ci_upper:+.4f}] | {r.cliffs_delta:+.3f} ({r.cliffs_magnitude}) | {r.wilcoxon_p:.4f} | {r.wilcoxon_p_holm:.4f} |"
         )
     return header + "\n".join(lines) + "\n"
 
@@ -439,8 +424,8 @@ def _interp_quantile(sorted_values: Sequence[float], p: float) -> float:
         raise ValueError("empty sequence")
     p = max(0.0, min(1.0, p))
     idx = p * (len(sorted_values) - 1)
-    lo = int(math.floor(idx))
-    hi = int(math.ceil(idx))
+    lo = math.floor(idx)
+    hi = math.ceil(idx)
     if lo == hi:
         return float(sorted_values[lo])
     frac = idx - lo
@@ -504,8 +489,10 @@ def _phi_inv(p: float) -> float:
         )
     q = p - 0.5
     r = q * q
-    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (
-        ((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0
+    return (
+        (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5])
+        * q
+        / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
     )
 
 
@@ -544,15 +531,15 @@ def _tie_correction(values: Sequence[float]) -> float:
 
 
 __all__ = [
-    "ConfidenceInterval",
     "ComparisonRow",
+    "ConfidenceInterval",
     "bootstrap_ci",
-    "paired_difference_ci",
     "cliffs_delta",
     "cliffs_delta_magnitude",
-    "rank_biserial",
-    "paired_wilcoxon",
-    "holm_bonferroni",
     "compute_statistical_report",
+    "holm_bonferroni",
+    "paired_difference_ci",
+    "paired_wilcoxon",
+    "rank_biserial",
     "report_to_markdown",
 ]
