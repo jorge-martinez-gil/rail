@@ -116,6 +116,88 @@ def admission_yield_loss(feedback_is_correct: Sequence[bool], admitted: Sequence
     return rejected_clean / len(clean)
 
 
+def area_under_contamination_curve(
+    feedback_is_correct: Sequence[bool], admitted: Sequence[bool]
+) -> float:
+    """Area under the cumulative-contamination curve (AUCC).
+
+    The cumulative contamination curve (CCC) plots the running fraction of
+    contaminated admissions against the running number of total admissions.
+    A policy that never admits contaminated events produces a flat zero curve
+    (AUCC = 0.0). The ``Always`` baseline yields AUCC = base_contamination_rate.
+    RAIL's AUCC should be strictly below the ``Always`` baseline.
+
+    We compute the trapezoid integral over the discrete CCC points, normalised
+    by the total number of admissions so the result lies in ``[0, 1]`` and is
+    comparable across streams of different lengths.
+
+    Returns ``0.0`` if no events are admitted.
+    """
+
+    if len(feedback_is_correct) != len(admitted):
+        raise ValueError("inputs must have the same length")
+    points = cumulative_contamination_curve(feedback_is_correct, admitted)
+    if not points:
+        return 0.0
+    total_admitted = points[-1].cumulative_admitted
+    if total_admitted == 0:
+        return 0.0
+
+    # Trapezoid integration over (x=admission_index/total, y=contamination_frac).
+    area = 0.0
+    prev_x = 0.0
+    prev_y = 0.0
+    for pt in points:
+        x = pt.cumulative_admitted / total_admitted
+        y = pt.cumulative_contaminated / pt.cumulative_admitted
+        area += 0.5 * (x - prev_x) * (prev_y + y)
+        prev_x = x
+        prev_y = y
+    return float(area)
+
+
+def normalised_contamination_gain(
+    feedback_is_correct: Sequence[bool], admitted: Sequence[bool]
+) -> float:
+    """Normalised Contamination Gain (NCG).
+
+    Measures the fractional reduction in post-admission contamination rate
+    achieved by a policy relative to the ``Always-admit`` baseline:
+
+    .. math::
+
+        \\text{NCG} = 1 - \\frac{c_{\\text{policy}}}{c_{\\text{base}}}
+
+    where :math:`c_{\\text{policy}}` is the admitted contamination rate and
+    :math:`c_{\\text{base}}` is the overall base contamination rate.
+
+    * NCG = 1.0 means perfect filtering (no contamination admitted).
+    * NCG = 0.0 means the policy gives no benefit over always-admitting.
+    * NCG < 0.0 means the policy *worsens* contamination (admits more
+      contaminated events proportionally than the base rate).
+
+    Returns ``0.0`` if the base contamination rate is zero (no filtering possible).
+    """
+
+    if len(feedback_is_correct) != len(admitted):
+        raise ValueError("inputs must have the same length")
+    n = len(feedback_is_correct)
+    if n == 0:
+        return 0.0
+    contaminated = sum(1 for ok in feedback_is_correct if not ok)
+    base_rate = contaminated / n if n > 0 else 0.0
+    if base_rate == 0.0:
+        return 0.0
+    admitted_total = sum(1 for a in admitted if a)
+    if admitted_total == 0:
+        return 1.0
+    contaminated_admitted = sum(
+        1 for ok, a in zip(feedback_is_correct, admitted, strict=False) if a and not ok
+    )
+    policy_rate = contaminated_admitted / admitted_total
+    return float(1.0 - policy_rate / base_rate)
+
+
 def burn_in_estimator_from_paper(
     deltas: Sequence[float],
     sigma_multiplier: float = 1.5,
@@ -163,8 +245,10 @@ def burn_in_estimator_from_paper(
 __all__ = [
     "CumulativePoint",
     "admission_yield_loss",
+    "area_under_contamination_curve",
     "burn_in_estimator_from_paper",
     "contamination_half_life",
     "cumulative_contamination_curve",
+    "normalised_contamination_gain",
     "time_to_first_contamination",
 ]
