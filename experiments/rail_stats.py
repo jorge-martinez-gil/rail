@@ -420,7 +420,7 @@ def report_to_markdown(rows: Sequence[ComparisonRow], baseline: str) -> str:
 
 
 def report_to_latex(
-    rows: "Sequence[ComparisonRow]",
+    rows: Sequence[ComparisonRow],
     baseline: str,
     caption: str = "",
     label: str = "tab:comparison",

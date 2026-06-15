@@ -149,7 +149,7 @@ class NumpyOnlineClassifier:
             self._b = np.zeros(self._n_classes, dtype=np.float64)
 
     def _eta(self) -> float:
-        if isinstance(self.learning_rate, (int, float)):
+        if isinstance(self.learning_rate, int | float):
             return float(self.learning_rate)
         # sklearn 'optimal' schedule
         return 1.0 / (self.alpha * (self._t0 + self._t))

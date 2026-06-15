@@ -500,7 +500,7 @@ class OnlineDriftCalibrator:
         self._drift_count = 0
         self._resets += 1
 
-    def extend(self, deltas: "Iterable[float]") -> int:
+    def extend(self, deltas: Iterable[float]) -> int:
         """Process multiple deltas; returns the number of resets triggered."""
         resets = 0
         for d in deltas:

@@ -441,7 +441,7 @@ def synthesise_events(
     contamination_rate: float = 0.3,
     clean_delta_mean: float = 2.5,
     clean_delta_sd: float = 0.7,
-    drift_config: "DriftConfig | None" = None,
+    drift_config: DriftConfig | None = None,
 ) -> list[tuple[InteractionEvent, bool]]:
     """Generate a synthetic operator-feedback stream for tests/demos.
 
