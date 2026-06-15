@@ -351,7 +351,7 @@ class OnlineBurnInCalibrator:
             w_focus=base.w_focus,
         )
 
-
+
 def burn_in_window_from_samples(
     deltas: Sequence[float],
     low: float = 0.25,
@@ -466,9 +466,7 @@ class OnlineDriftCalibrator:
             alpha = 2.0 / (self.reference_window + 1)
             prev_mean = self._mean_est
             self._mean_est += alpha * (delta_sec - self._mean_est)
-            self._m2_est = (1.0 - alpha) * (
-                self._m2_est + alpha * (delta_sec - prev_mean) ** 2
-            )
+            self._m2_est = (1.0 - alpha) * (self._m2_est + alpha * (delta_sec - prev_mean) ** 2)
 
         # Only check for drift once the base calibrator has completed burn-in.
         if not self.base_calibrator.is_ready():
@@ -526,4 +524,3 @@ class OnlineDriftCalibrator:
 
     def admission_params(self, base: AdmissionParams | None = None) -> AdmissionParams:
         return self.base_calibrator.admission_params(base=base)
-
