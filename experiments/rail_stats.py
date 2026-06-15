@@ -419,6 +419,101 @@ def report_to_markdown(rows: Sequence[ComparisonRow], baseline: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def report_to_latex(
+    rows: "Sequence[ComparisonRow]",
+    baseline: str,
+    caption: str = "",
+    label: str = "tab:comparison",
+    alpha: float = 0.05,
+) -> str:
+    """Render a comparison report as a publication-ready LaTeX booktabs table.
+
+    The table uses ``booktabs`` column rules and marks statistically significant
+    results (Holm-corrected p < ``alpha``) with a dagger (†).  Bold the row
+    with the largest mean improvement.
+
+    Parameters
+    ----------
+    rows : sequence of ComparisonRow
+        Output of :func:`compute_statistical_report`.
+    baseline : str
+        Name of the baseline policy (for the caption).
+    caption : str
+        Optional table caption.  A sensible default is provided if empty.
+    label : str
+        LaTeX ``\\label`` key.
+    alpha : float
+        Significance threshold for the dagger marker.
+
+    Returns
+    -------
+    str
+        Complete LaTeX ``table`` environment, ready to paste into a ``.tex`` file.
+    """
+
+    if not caption:
+        caption = (
+            f"Statistical comparison of all policies vs.~\\texttt{{{baseline}}}. "
+            "95\\% bootstrap CIs (percentile). "
+            "Effect sizes: Cliff's~$\\delta$ with magnitude and rank-biserial~$r$. "
+            "$p$ values Holm-corrected; \\dag\\ $p_{\\text{Holm}} < "
+            + f"{alpha}"
+            + "$."
+        )
+
+    def _fmt_p(p: float) -> str:
+        if p < 0.001:
+            return "<0.001"
+        return f"{p:.3f}"
+
+    def _sig(p_holm: float) -> str:
+        return r"\dag" if p_holm < alpha else ""
+
+    # Find row with largest mean improvement for bolding.
+    best_idx = max(range(len(rows)), key=lambda i: rows[i].diff_mean) if rows else -1
+
+    lines: list[str] = []
+    lines.append(r"\begin{table}[t]")
+    lines.append(r"\centering")
+    lines.append(r"\small")
+    if caption:
+        lines.append(f"\\caption{{{caption}}}")
+    lines.append(f"\\label{{{label}}}")
+    lines.append(r"\begin{tabular}{lrccrccc}")
+    lines.append(r"\toprule")
+    lines.append(
+        r"Policy & $n$ & Mean $\pm$ SD & 95\% CI & "
+        r"$\Delta$ vs baseline & $\Delta$ 95\% CI & "
+        r"Cliff's $\delta$ & $p_{\text{Holm}}$ \\"
+    )
+    lines.append(r"\midrule")
+    for idx, r in enumerate(rows):
+        bold_open = r"\textbf{" if idx == best_idx else ""
+        bold_close = "}" if idx == best_idx else ""
+        sig = _sig(r.wilcoxon_p_holm)
+        sig_str = f"$^{{{sig}}}$" if sig else ""
+        row_str = (
+            f"{bold_open}\\texttt{{{r.policy}}}{bold_close} & "
+            f"{r.n} & "
+            f"{bold_open}{r.mean:.4f} $\\pm$ {r.sd:.4f}{bold_close} & "
+            f"[{r.ci_lower:.4f}, {r.ci_upper:.4f}] & "
+            f"{r.diff_mean:+.4f} & "
+            f"[{r.diff_ci_lower:+.4f}, {r.diff_ci_upper:+.4f}] & "
+            f"{r.cliffs_delta:+.3f} ({r.cliffs_magnitude[0].upper()}) & "
+            f"{_fmt_p(r.wilcoxon_p_holm)}{sig_str} \\\\"
+        )
+        lines.append(row_str)
+    lines.append(r"\bottomrule")
+    lines.append(r"\end{tabular}")
+    lines.append(r"\end{table}")
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Small numeric helpers (kept private to avoid SciPy dependence).
+# ---------------------------------------------------------------------------
+
+
 def _interp_quantile(sorted_values: Sequence[float], p: float) -> float:
     if not sorted_values:
         raise ValueError("empty sequence")
@@ -541,5 +636,6 @@ __all__ = [
     "paired_difference_ci",
     "paired_wilcoxon",
     "rank_biserial",
+    "report_to_latex",
     "report_to_markdown",
 ]

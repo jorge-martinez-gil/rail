@@ -145,6 +145,172 @@ def hoeffding_contamination_bound(
     return min(1.0, math.exp(-2.0 * horizon * epsilon * epsilon))
 
 
+def bennett_contamination_bound(
+    horizon: int,
+    base_contamination_rate: float,
+    false_admission_rate: float,
+    epsilon: float,
+) -> float:
+    """Bennett's inequality upper bound on P(K_N >= N*(pi*alpha + epsilon)).
+
+    Bennett's inequality (Bennett, 1962) is tighter than Hoeffding whenever
+    the per-event variance is small relative to the range. For the
+    contamination count K_N, each indicator is Bernoulli(pi*alpha), so the
+    variance per trial is ``sigma^2 = pi*alpha*(1-pi*alpha)``. The bound is
+
+    .. math::
+
+        P(K_N \\ge N(\\mu + \\varepsilon)) \\;\\le\\;
+            \\exp\\!\\left(-\\frac{N\\,\\sigma^2}{b^2}\\,h\\!\\left(
+                \\frac{b\\,\\varepsilon}{\\sigma^2}\\right)\\right),
+
+    where :math:`b = 1 - \\mu` is the maximum excess above the mean,
+    :math:`h(u) = (1+u)\\ln(1+u) - u` is the Bennett function, and
+    :math:`\\mu = \\pi\\alpha`.
+
+    For small :math:`\\varepsilon` this is strictly tighter than the Hoeffding
+    bound ``exp(-2 N epsilon^2)``.
+
+    Returns the bound clipped to ``[0, 1]``.
+
+    References
+    ----------
+    * Bennett, "Probability Inequalities for the Sum of Independent Random
+      Variables," J. Am. Stat. Assoc., 1962.
+    * Maurer & Pontil, "Empirical Bernstein Bounds and Sample-Variance
+      Penalization," COLT 2009 (for the empirical variant).
+    """
+
+    if epsilon <= 0.0:
+        raise ValueError("epsilon must be positive")
+    if not 0.0 <= base_contamination_rate <= 1.0:
+        raise ValueError("base_contamination_rate must lie in [0, 1]")
+    if not 0.0 <= false_admission_rate <= 1.0:
+        raise ValueError("false_admission_rate must lie in [0, 1]")
+    if horizon <= 0:
+        return 1.0
+
+    mu = base_contamination_rate * false_admission_rate
+    # Variance of a Bernoulli(mu) indicator.
+    sigma2 = mu * (1.0 - mu)
+    if sigma2 < 1e-15:
+        # Near-zero variance: event is near-deterministic; Hoeffding is exact.
+        return min(1.0, math.exp(-2.0 * horizon * epsilon * epsilon))
+
+    # Maximum excess above the mean for a [0,1] bounded variable is b = 1 - mu.
+    b = 1.0 - mu
+    u = b * epsilon / sigma2
+    # Bennett function h(u) = (1+u)*ln(1+u) - u; numerically stable for all u > 0.
+    h = (1.0 + u) * math.log(1.0 + u) - u
+    exponent = -(horizon * sigma2 / (b * b)) * h
+    return min(1.0, math.exp(exponent))
+
+
+def variance_aware_horizon(
+    contamination_budget: float,
+    confidence: float,
+    base_contamination_rate: float,
+    false_admission_rate: float,
+) -> int:
+    """Smallest horizon N certified by Bennett's bound (tighter than Hoeffding).
+
+    Analogous to :func:`required_horizon_for_budget` but uses
+    :func:`bennett_contamination_bound` instead of the Hoeffding bound. Because
+    Bennett exploits the variance of the admission indicator, the certified
+    horizon is typically smaller (i.e., the same confidence is achieved sooner).
+
+    Returns ``-1`` if the population mean already exhausts the per-event budget.
+    """
+
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must lie in (0, 1)")
+    if contamination_budget <= 0.0:
+        raise ValueError("contamination_budget must be positive")
+
+    pi_alpha = base_contamination_rate * false_admission_rate
+    n = 1
+    while True:
+        per_event = contamination_budget / n
+        if per_event <= pi_alpha:
+            return -1
+        eps = per_event - pi_alpha
+        bound = bennett_contamination_bound(n, base_contamination_rate, false_admission_rate, eps)
+        if bound <= 1.0 - confidence:
+            return n
+        # Jump forward: Hoeffding closed form gives a safe lower bound on N.
+        log_term = -math.log(1.0 - confidence)
+        n_heuristic = math.ceil(log_term / (2.0 * eps * eps))
+        if n_heuristic > n:
+            n = n_heuristic
+        else:
+            n += 1
+        if n > 10**9:  # pragma: no cover
+            return -1
+
+
+def required_horizon_for_budget(
+    contamination_budget: float,
+    confidence: float,
+    base_contamination_rate: float,
+    false_admission_rate: float,
+) -> int:
+    """Smallest horizon N such that the Hoeffding bound certifies the budget.
+
+    Returns the smallest :math:`N` satisfying
+
+    .. math::
+
+        N\\,(\\pi\\alpha + \\varepsilon) \\le B \\quad \\text{and} \\quad
+        \\exp(-2 N \\varepsilon^2) \\le 1 - p,
+
+    where :math:`B` is the absolute contamination budget per ``horizon``,
+    :math:`p = \\text{confidence}` and :math:`\\varepsilon` is chosen as the
+    slack between ``budget/N`` and the population mean. We use the
+    closed-form
+
+    .. math::
+
+        N = \\max\\!\\left\\{ 1,\\; \\left\\lceil
+            \\frac{-\\ln(1 - p)}{2\\,\\varepsilon^2}\\right\\rceil \\right\\}
+
+    after solving :math:`\\varepsilon = B/N - \\pi\\alpha` jointly via
+    bisection over feasible ``N``.
+
+    Returns ``-1`` if no horizon satisfies the budget (i.e. the population
+    mean already exceeds the per-event budget).
+    """
+
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must lie in (0, 1)")
+    if contamination_budget <= 0.0:
+        raise ValueError("contamination_budget must be positive")
+    pi_alpha = base_contamination_rate * false_admission_rate
+    log_term = -math.log(1.0 - confidence)
+
+    # Find smallest N >= 1 s.t. eps(N) = B/N - pi_alpha > 0 AND
+    #                      exp(-2 N eps^2) <= 1 - p.
+    # Note: eps(N) is decreasing in N (B/N decreases), so feasibility shrinks
+    # as N grows. We try increasing N until either the budget per event is
+    # exhausted or the Hoeffding inequality is satisfied.
+    n = 1
+    while True:
+        per_event = contamination_budget / n
+        if per_event <= pi_alpha:
+            return -1
+        eps = per_event - pi_alpha
+        bound = math.exp(-2.0 * n * eps * eps)
+        if bound <= 1.0 - confidence:
+            return n
+        # required N from Hoeffding alone (closed form)
+        n_needed = math.ceil(log_term / (2.0 * eps * eps))
+        if n_needed > n:
+            n = n_needed
+        else:
+            n += 1
+        if n > 10**9:  # pragma: no cover - sanity bound
+            return -1
+
+
 def required_horizon_for_budget(
     contamination_budget: float,
     confidence: float,
@@ -256,7 +422,6 @@ def pareto_frontier(
 
     n = len(scores)
     out: list[ParetoPoint] = []
-    sum(1 for ok in feedback_is_correct if not ok) / n if n else 0.0
     for theta in thetas:
         admitted = [s >= theta for s in scores]
         contract = contamination_contract(feedback_is_correct, admitted)
@@ -350,3 +515,18 @@ def monte_carlo_contamination(
         ),
         "analytical_expected_contamination": expected_contaminated_admissions(horizon, pi, alpha),
     }
+
+
+__all__ = [
+    "ParetoPoint",
+    "admission_efficiency",
+    "bayes_post_admission_contamination",
+    "bennett_contamination_bound",
+    "expected_contaminated_admissions",
+    "hoeffding_contamination_bound",
+    "monte_carlo_contamination",
+    "pareto_frontier",
+    "pareto_lower_envelope",
+    "required_horizon_for_budget",
+    "variance_aware_horizon",
+]

@@ -92,19 +92,27 @@ def _cross_entropy(probs: np.ndarray, y: int) -> float:
     return -math.log(p)
 
 
-def _two_view_losses(probs: np.ndarray, y: int, rng: np.random.Generator) -> tuple[float, float]:
+def _two_view_losses(
+    probs: np.ndarray, y: int, rng: np.random.Generator
+) -> tuple[float, float, np.ndarray, np.ndarray]:
     """Cheap two-view loss split for CoTeaching/JointAgreement on a single model.
 
     We perturb the predicted distribution with two independent Dirichlet
     samples concentrated around ``probs``; the resulting losses behave like
     two correlated-but-distinct critics. This avoids requiring two separately
     trained models in the streaming setting where memory is tight.
+
+    Returns
+    -------
+    tuple (loss_a, loss_b, probs_a, probs_b) so callers can derive both the
+    losses *and* the per-view predicted labels from the *same* perturbations,
+    which is the correct JoCoR semantics.
     """
     probs = np.clip(np.asarray(probs, dtype=float), EPS, 1.0)
     alpha = 50.0 * probs  # high concentration -> small perturbation
     p_a = rng.dirichlet(alpha)
     p_b = rng.dirichlet(alpha)
-    return _cross_entropy(p_a, y), _cross_entropy(p_b, y)
+    return _cross_entropy(p_a, y), _cross_entropy(p_b, y), p_a, p_b
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +175,7 @@ class CoTeachingPolicy(StatefulPolicy):
         return -_cross_entropy(probs, y_human)  # higher = lower loss = more admissible
 
     def admits(self, probs: np.ndarray, y_human: int, telemetry: object) -> bool:
-        la, lb = _two_view_losses(probs, y_human, self._rng)
+        la, lb, _, _ = _two_view_losses(probs, y_human, self._rng)
         return bool(self._gate.decide(la, lb))
 
 
@@ -215,12 +223,10 @@ class JointAgreementPolicy(StatefulPolicy):
         return -_cross_entropy(probs, y_human)
 
     def admits(self, probs: np.ndarray, y_human: int, telemetry: object) -> bool:
-        la, lb = _two_view_losses(probs, y_human, self._rng)
-        # two-view predictions: argmax of perturbed distributions
-        probs_arr = np.clip(np.asarray(probs, dtype=float), EPS, 1.0)
-        alpha = 50.0 * probs_arr
-        p_a = self._rng.dirichlet(alpha)
-        p_b = self._rng.dirichlet(alpha)
+        # Use the same perturbed distributions for both losses and predictions,
+        # matching JoCoR semantics: each "network" produces a prediction and a loss
+        # from the same forward pass (i.e., the same perturbation).
+        la, lb, p_a, p_b = _two_view_losses(probs, y_human, self._rng)
         pred_a = int(np.argmax(p_a))
         pred_b = int(np.argmax(p_b))
         return bool(self._gate.decide(pred_a, pred_b, la, lb))

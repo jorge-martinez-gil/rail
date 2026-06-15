@@ -372,12 +372,76 @@ def kafka_streams_handler(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class DriftConfig:
+    """Configuration for injecting a concept drift into ``synthesise_events``.
+
+    Parameters
+    ----------
+    onset : int
+        Event index at which the drift begins (0-indexed).
+    new_delta_mean : float
+        Target log-mean of the clean deliberation time after drift (seconds).
+    new_delta_sd : float
+        Target log-standard-deviation of the clean deliberation time after drift.
+    mode : {"abrupt", "gradual"}
+        ``"abrupt"`` -- instantaneous step change at ``onset``.
+        ``"gradual"`` -- linear interpolation over ``duration`` events.
+    duration : int
+        Width of the gradual drift window (ignored for ``"abrupt"``).
+    """
+
+    onset: int
+    new_delta_mean: float
+    new_delta_sd: float
+    mode: str = "abrupt"
+    duration: int = 200
+
+    def __post_init__(self) -> None:
+        if self.onset < 0:
+            raise ValueError("onset must be non-negative")
+        if self.new_delta_mean <= 0.0:
+            raise ValueError("new_delta_mean must be positive")
+        if self.new_delta_sd <= 0.0:
+            raise ValueError("new_delta_sd must be positive")
+        if self.mode not in ("abrupt", "gradual"):
+            raise ValueError("mode must be 'abrupt' or 'gradual'")
+        if self.duration < 1:
+            raise ValueError("duration must be >= 1")
+
+
+def _drift_params(
+    event_idx: int,
+    cfg: DriftConfig,
+    base_mu: float,
+    base_sd: float,
+) -> tuple[float, float]:
+    """Return the (log_mu, log_sd) for a clean event at position ``event_idx``."""
+
+    target_mu = math.log(cfg.new_delta_mean)
+    target_sd = cfg.new_delta_sd
+    if event_idx < cfg.onset:
+        return base_mu, base_sd
+    if cfg.mode == "abrupt":
+        return target_mu, target_sd
+    # Gradual: linear interpolation over [onset, onset + duration).
+    elapsed = event_idx - cfg.onset
+    if elapsed >= cfg.duration:
+        return target_mu, target_sd
+    t = elapsed / cfg.duration
+    return (
+        base_mu + t * (target_mu - base_mu),
+        base_sd + t * (target_sd - base_sd),
+    )
+
+
 def synthesise_events(
     n: int = 1000,
     seed: int = 0,
     contamination_rate: float = 0.3,
     clean_delta_mean: float = 2.5,
     clean_delta_sd: float = 0.7,
+    drift_config: "DriftConfig | None" = None,
 ) -> list[tuple[InteractionEvent, bool]]:
     """Generate a synthetic operator-feedback stream for tests/demos.
 
@@ -385,6 +449,22 @@ def synthesise_events(
     contamination contract after the operator has consumed the stream. Clean
     events draw :math:`\\Delta` from a log-normal centred near the typical
     deliberation; contaminated events are uniformly fast or slow.
+
+    Parameters
+    ----------
+    drift_config : DriftConfig, optional
+        When supplied, injects a distribution shift at ``drift_config.onset``
+        events. Two modes are supported:
+
+        * ``"abrupt"`` -- the clean-delta distribution jumps instantly to the
+          new parameters at event ``onset``.
+        * ``"gradual"`` -- the clean-delta distribution interpolates linearly
+          from the original to the new parameters over the window
+          ``[onset, onset + drift_config.duration)``.
+
+        After the drift region the new parameters persist for the rest of the
+        stream, matching the non-stationary operator-workload scenarios studied
+        in Section 5 of the paper.
     """
 
     import random
@@ -392,6 +472,18 @@ def synthesise_events(
     rng = random.Random(seed)
     out: list[tuple[InteractionEvent, bool]] = []
     for i in range(n):
+        # Compute current clean-delta parameters under drift.
+        if drift_config is not None:
+            mu, sd = _drift_params(
+                i,
+                drift_config,
+                base_mu=math.log(clean_delta_mean),
+                base_sd=clean_delta_sd,
+            )
+        else:
+            mu = math.log(clean_delta_mean)
+            sd = clean_delta_sd
+
         if rng.random() < contamination_rate:
             # Contaminated: reflexive or stalled.
             delta = rng.choice([rng.uniform(0.05, 0.4), rng.uniform(10.0, 25.0)])
@@ -399,7 +491,7 @@ def synthesise_events(
             edits = 0
             focus = 0.1
         else:
-            delta = max(0.05, rng.lognormvariate(math.log(clean_delta_mean), clean_delta_sd))
+            delta = max(0.05, rng.lognormvariate(mu, sd))
             is_correct = True
             edits = rng.choice([0, 1, 1, 2])
             focus = max(0.1, delta - rng.uniform(0.2, 0.8))

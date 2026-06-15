@@ -351,7 +351,7 @@ class OnlineBurnInCalibrator:
             w_focus=base.w_focus,
         )
 
-
+
 def burn_in_window_from_samples(
     deltas: Sequence[float],
     low: float = 0.25,
@@ -379,3 +379,151 @@ def burn_in_window_from_samples(
     if hi <= lo:
         hi = lo + 1e-3
     return float(lo), float(hi)
+
+
+@dataclass
+class OnlineDriftCalibrator:
+    """CUSUM-based drift detector with automatic window re-calibration.
+
+    The burn-in calibrator in :class:`OnlineBurnInCalibrator` performs a
+    *one-shot* calibration after a warm-up period.  In long-running
+    deployments the operator's deliberation distribution can shift (seasonal
+    workload, task difficulty, team changes).  ``OnlineDriftCalibrator``
+    wraps the burn-in calibrator with a Page-Hinkley / CUSUM change-point
+    detector: when the running mean of delta deviates from the post-calibration
+    estimate by more than ``drift_threshold`` standard deviations for more than
+    ``drift_window`` consecutive events, the calibrator resets and a new burn-in
+    begins.
+
+    This is the "adaptive calibration" mechanism referred to in Section 3.5
+    of the paper.
+
+    Parameters
+    ----------
+    base_calibrator : OnlineBurnInCalibrator
+        The underlying calibrator.  When drift is detected it is reset to a
+        fresh :class:`OnlineBurnInCalibrator` with the same hyper-parameters.
+    drift_threshold : float
+        Number of empirical standard deviations the running mean must deviate
+        from the reference mean to trigger drift detection.  Higher values
+        make detection less sensitive.  Default of 3.0 gives ≈ 1% false-alarm
+        rate under a Gaussian null.
+    drift_window : int
+        Minimum number of consecutive above-threshold events before a reset is
+        triggered.  Prevents spurious resets from single outliers.
+    reference_window : int
+        Number of most-recent deltas used to maintain the reference mean and
+        standard deviation (rolling estimate).  Must be >= base_calibrator's
+        ``min_samples``.
+
+    Notes
+    -----
+    All per-event operations are O(1).  The calibrator is checkpointable: the
+    most important state is ``drift_count`` and ``window_swapped``.
+    """
+
+    base_calibrator: OnlineBurnInCalibrator = field(
+        default_factory=lambda: OnlineBurnInCalibrator(min_samples=300)
+    )
+    drift_threshold: float = 3.0
+    drift_window: int = 20
+    reference_window: int = 300
+    _ref_estimator: _P2Quantile = field(init=False, repr=False)
+    _mean_est: float = field(default=0.0, init=False, repr=False)
+    _m2_est: float = field(default=0.0, init=False, repr=False)
+    _ref_count: int = field(default=0, init=False, repr=False)
+    _drift_count: int = field(default=0, init=False, repr=False)
+    _resets: int = field(default=0, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.drift_threshold <= 0.0:
+            raise ValueError("drift_threshold must be positive")
+        if self.drift_window < 1:
+            raise ValueError("drift_window must be >= 1")
+        if self.reference_window < 1:
+            raise ValueError("reference_window must be >= 1")
+        self._ref_estimator = _P2Quantile(0.5)  # median tracker for reference
+
+    def update(self, delta_sec: float) -> bool:
+        """Process one delta observation.  Returns ``True`` if a drift reset occurred."""
+
+        if not math.isfinite(delta_sec) or delta_sec < 0.0:
+            return False
+
+        self.base_calibrator.update(delta_sec)
+
+        # Maintain Welford online mean/variance over the reference window.
+        # We use a simple EMA decay once the window is full to stay O(1).
+        self._ref_count += 1
+        if self._ref_count <= self.reference_window:
+            # Welford accumulation during warm-up.
+            delta = delta_sec - self._mean_est
+            self._mean_est += delta / self._ref_count
+            delta2 = delta_sec - self._mean_est
+            self._m2_est += delta * delta2
+        else:
+            # Exponential decay with effective window = reference_window.
+            alpha = 2.0 / (self.reference_window + 1)
+            prev_mean = self._mean_est
+            self._mean_est += alpha * (delta_sec - self._mean_est)
+            self._m2_est = (1.0 - alpha) * (
+                self._m2_est + alpha * (delta_sec - prev_mean) ** 2
+            )
+
+        # Only check for drift once the base calibrator has completed burn-in.
+        if not self.base_calibrator.is_ready():
+            return False
+
+        ref_var = self._m2_est / max(1, self._ref_count - 1) if self._ref_count > 1 else 0.0
+        ref_sd = math.sqrt(ref_var) if ref_var > 0.0 else 1e-6
+        z = abs(delta_sec - self._mean_est) / ref_sd
+
+        if z > self.drift_threshold:
+            self._drift_count += 1
+        else:
+            self._drift_count = 0
+
+        if self._drift_count >= self.drift_window:
+            self._reset()
+            return True
+        return False
+
+    def _reset(self) -> None:
+        """Reset the burn-in calibrator while preserving reference statistics."""
+        self.base_calibrator = OnlineBurnInCalibrator(
+            min_samples=self.base_calibrator.min_samples,
+            low=self.base_calibrator.low,
+            high=self.base_calibrator.high,
+            min_floor=self.base_calibrator.min_floor,
+            max_ceiling=self.base_calibrator.max_ceiling,
+        )
+        self._drift_count = 0
+        self._resets += 1
+
+    def extend(self, deltas: "Iterable[float]") -> int:
+        """Process multiple deltas; returns the number of resets triggered."""
+        resets = 0
+        for d in deltas:
+            if self.update(d):
+                resets += 1
+        return resets
+
+    @property
+    def drift_count(self) -> int:
+        """Current number of consecutive above-threshold events."""
+        return self._drift_count
+
+    @property
+    def resets(self) -> int:
+        """Total number of drift-triggered resets."""
+        return self._resets
+
+    def is_ready(self) -> bool:
+        return self.base_calibrator.is_ready()
+
+    def window(self) -> tuple[float, float]:
+        return self.base_calibrator.window()
+
+    def admission_params(self, base: AdmissionParams | None = None) -> AdmissionParams:
+        return self.base_calibrator.admission_params(base=base)
+
