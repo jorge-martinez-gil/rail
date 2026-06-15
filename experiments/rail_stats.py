@@ -420,7 +420,7 @@ def report_to_markdown(rows: Sequence[ComparisonRow], baseline: str) -> str:
 
 
 def report_to_latex(
-    rows: "Sequence[ComparisonRow]",
+    rows: Sequence[ComparisonRow],
     baseline: str,
     caption: str = "",
     label: str = "tab:comparison",
@@ -456,9 +456,7 @@ def report_to_latex(
             f"Statistical comparison of all policies vs.~\\texttt{{{baseline}}}. "
             "95\\% bootstrap CIs (percentile). "
             "Effect sizes: Cliff's~$\\delta$ with magnitude and rank-biserial~$r$. "
-            "$p$ values Holm-corrected; \\dag\\ $p_{\\text{Holm}} < "
-            + f"{alpha}"
-            + "$."
+            "$p$ values Holm-corrected; \\dag\\ $p_{\\text{Holm}} < " + f"{alpha}" + "$."
         )
 
     def _fmt_p(p: float) -> str:

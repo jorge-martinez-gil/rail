@@ -311,69 +311,6 @@ def required_horizon_for_budget(
             return -1
 
 
-def required_horizon_for_budget(
-    contamination_budget: float,
-    confidence: float,
-    base_contamination_rate: float,
-    false_admission_rate: float,
-) -> int:
-    """Smallest horizon N such that the Hoeffding bound certifies the budget.
-
-    Returns the smallest :math:`N` satisfying
-
-    .. math::
-
-        N\\,(\\pi\\alpha + \\varepsilon) \\le B \\quad \\text{and} \\quad
-        \\exp(-2 N \\varepsilon^2) \\le 1 - p,
-
-    where :math:`B` is the absolute contamination budget per ``horizon``,
-    :math:`p = \\text{confidence}` and :math:`\\varepsilon` is chosen as the
-    slack between ``budget/N`` and the population mean. We use the
-    closed-form
-
-    .. math::
-
-        N = \\max\\!\\left\\{ 1,\\; \\left\\lceil
-            \\frac{-\\ln(1 - p)}{2\\,\\varepsilon^2}\\right\\rceil \\right\\}
-
-    after solving :math:`\\varepsilon = B/N - \\pi\\alpha` jointly via
-    bisection over feasible ``N``.
-
-    Returns ``-1`` if no horizon satisfies the budget (i.e. the population
-    mean already exceeds the per-event budget).
-    """
-
-    if not 0.0 < confidence < 1.0:
-        raise ValueError("confidence must lie in (0, 1)")
-    if contamination_budget <= 0.0:
-        raise ValueError("contamination_budget must be positive")
-    pi_alpha = base_contamination_rate * false_admission_rate
-    log_term = -math.log(1.0 - confidence)
-
-    # Find smallest N >= 1 s.t. eps(N) = B/N - pi_alpha > 0 AND
-    #                      exp(-2 N eps^2) <= 1 - p.
-    # Note: eps(N) is decreasing in N (B/N decreases), so feasibility shrinks
-    # as N grows. We try increasing N until either the budget per event is
-    # exhausted or the Hoeffding inequality is satisfied.
-    n = 1
-    while True:
-        per_event = contamination_budget / n
-        if per_event <= pi_alpha:
-            return -1
-        eps = per_event - pi_alpha
-        bound = math.exp(-2.0 * n * eps * eps)
-        if bound <= 1.0 - confidence:
-            return n
-        # required N from Hoeffding alone (closed form)
-        n_needed = math.ceil(log_term / (2.0 * eps * eps))
-        if n_needed > n:
-            n = n_needed
-        else:
-            n += 1
-        if n > 10**9:  # pragma: no cover - sanity bound
-            return -1
-
-
 # ---------------------------------------------------------------------------
 # Lemma 1: Pareto frontier of yield vs contamination.
 # ---------------------------------------------------------------------------

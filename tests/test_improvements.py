@@ -250,7 +250,7 @@ def test_online_drift_calibrator_detects_shift():
     """Feeding a strongly shifted stream should trigger at least one reset."""
     import random
 
-    from experiments.rail_core import OnlineDriftCalibrator, OnlineBurnInCalibrator
+    from experiments.rail_core import OnlineBurnInCalibrator, OnlineDriftCalibrator
 
     rng = random.Random(1)
     cal = OnlineDriftCalibrator(
@@ -274,7 +274,7 @@ def test_online_drift_calibrator_no_false_alarms_on_stable_stream():
     """No resets should be triggered on a stationary stream."""
     import random
 
-    from experiments.rail_core import OnlineDriftCalibrator, OnlineBurnInCalibrator
+    from experiments.rail_core import OnlineBurnInCalibrator, OnlineDriftCalibrator
 
     rng = random.Random(2)
     cal = OnlineDriftCalibrator(
@@ -300,8 +300,6 @@ def test_online_drift_calibrator_rejects_invalid_params():
 
 
 def test_online_drift_calibrator_ignores_invalid_deltas():
-    import math
-
     from experiments.rail_core import OnlineDriftCalibrator
 
     cal = OnlineDriftCalibrator()
@@ -316,7 +314,7 @@ def test_online_drift_calibrator_window_and_params_after_burnin():
     """After burn-in, window() and admission_params() should be callable."""
     import random
 
-    from experiments.rail_core import OnlineDriftCalibrator, OnlineBurnInCalibrator
+    from experiments.rail_core import OnlineBurnInCalibrator, OnlineDriftCalibrator
 
     rng = random.Random(3)
     cal = OnlineDriftCalibrator(
@@ -430,8 +428,6 @@ def test_joint_agreement_uses_consistent_views():
 
     rng = np.random.default_rng(99)
     probs = rng.dirichlet([5.0, 2.0, 1.0])
-    policy = JointAgreementPolicy(seed=42)
-
     # We can't directly inspect RNG state, but we can verify the policy
     # produces the same decision given the same seed on repeated independent
     # instantiations (determinism test -- would fail if extra Dirichlet draws
