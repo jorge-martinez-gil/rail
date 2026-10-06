@@ -79,11 +79,53 @@ python -m experiments.reproduce_paper --tier headline --workers 8 --stages self_
 python -m experiments.reproduce_paper --tier medium --workers 8 --stages regime
 ```
 
+## Real-operator pilot (~2 seconds)
+
+Collect new participant sessions with the standalone labelling tool:
+
+```powershell
+python -m http.server 8000 --directory app
+# Open http://127.0.0.1:8000/labeling.html
+```
+
+The page exports one `rail-human-telemetry-v1` JSON file and a CSV mirror per participant. Put the
+JSON exports in a directory and pass that directory to the analysis command below.
+
+```bash
+python -m experiments.human_study "real tests" --output-dir publication_outputs/human_study
+```
+Audits the five `rail-human-telemetry-v1` session files in `real tests/`
+(re-computes every V from raw telemetry through `experiments/rail_core.py` and
+cross-checks the console's recorded scores and admission decisions), then
+regenerates the pilot table (`table_human_pilot.tex`), the two-panel figure
+(`fig_human_pilot.pdf`), and the summary JSON reported in the manuscript's
+real-operator pilot section. Copy `fig_human_pilot.pdf` into `paper/figs/`
+after regeneration.
+
 ## Custom knobs
 - `--seeds N` -- cap to first N seeds of the tier (quick parameter sweep)
 - `--max-cells N` -- stride-subsample the 24-cell regime grid
 - `--n-replay-events N` -- per-cell replay length (1200 OK for winner detection)
 - `--workers N` -- joblib loky workers (use os.cpu_count() - 1)
+
+## Checkpointed / pre-emptible runs (`experiments/chunked_driver.py`)
+
+For environments that can kill the process at any moment (CI, sandboxes,
+laptops), the chunked driver runs the self-contained benchmark one
+(dataset, seed, policy) replay at a time with on-disk checkpoints, so it can
+be re-invoked until complete and is fully idempotent:
+
+```
+python -m experiments.chunked_driver --out publication_outputs/v4 --tier headline --budget 300
+# repeat until it prints DONE; parallel shards: --shard 0:2 / --shard 1:2 (separate processes)
+python -m experiments.chunked_driver --out publication_outputs/v4 --finalize
+```
+
+`self_contained_v4_hybrid/` was produced this way (fast backend). IMPORTANT:
+never mix rows produced in different environments -- final Macro-F1 and
+model-dependent admission counts drift across numpy/python versions (the
+'always' reference counts are env-invariant and are cross-checked in the
+manifest).
 
 ## Outputs
 Each stage writes to `publication_outputs/<stage>/`:

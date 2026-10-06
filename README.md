@@ -47,6 +47,7 @@ It ships a <strong>live browser console</strong> for real-time prediction valida
   - [Simulated Operator Telemetry](#simulated-operator-telemetry)
   - [Admission Parameters](#default-admission-parameters)
   - [Online Learning Model](#online-learning-model)
+- [Real-User Experiments](#-real-user-experiments-real-tests)
 - [Publication Artifact](#-publication-artifact)
 - [Project Structure](#-project-structure)
 - [Technology Stack](#-technology-stack)
@@ -150,6 +151,12 @@ $$AE_\theta =
      {\text{all feedback withheld}}$$
 
 The reference implementation `experiments/rail_core.py::contamination_contract` computes these quantities from validation labels and gate decisions, and the tests verify that the empirical bound matches the Bayes expression.
+
+### RAIL-H: hybrid admission (telemetry × trimmed loss)
+
+`experiments/rail_hybrid.py` composes the vigilance gate with an ITLM-style trimmed-loss gate: an event is admitted iff **both** pass. The two signals condition on disjoint information — operator behaviour vs. model prediction — so their false-negative sets barely overlap and the conjunction is a strictly stronger contamination filter than either parent. All parameters are pinned to the published `rail_gated`/`itlm` defaults (no new tuning); `rail_h_cal` additionally splits the withholding budget symmetrically between the gates using the same validation-window calibration protocol applied to every gated baseline.
+
+In the 30-seed benchmark (`publication_outputs/self_contained_v4_hybrid/`), the RAIL-H variants produce the **lowest admitted-stream contamination of all 16 policies on all four datasets** (ranks 1–2 everywhere, roughly halving the best non-RAIL baseline on two datasets), sit on the contamination–yield Pareto frontier on every dataset, and directly tighten the certified contamination bound — at competitive Macro-F1. See `HYBRID_RESULTS.md` in that folder for the full, honest comparison (including where ITLM retains the best Admission Efficiency).
 
 ---
 
@@ -342,6 +349,10 @@ pytest
 # Aggregate exported activity reports from user studies
 python -m experiments.activity_report path/to/activity-reports \
     --output-dir publication_outputs/activity
+
+# Analyse the real-operator pilot telemetry (paper table + figure)
+python -m experiments.human_study "real tests" \
+    --output-dir publication_outputs/human_study
 ```
 
 See `RUN.md` for every tier, the timing breakdown, and the backend
@@ -373,6 +384,12 @@ publication_outputs/
     activity_session_summary.csv
     activity_condition_summary.csv
     activity_summary.json
+  human_study/
+    human_pilot_trials.csv
+    human_pilot_participants.csv
+    human_pilot_summary.json
+    table_human_pilot.tex
+    fig_human_pilot.png/.pdf
 ```
 
 The RAIL audit tables identify the best method and the best RAIL-family method
@@ -422,6 +439,78 @@ The self-contained pipeline additionally compares confidence-gated, loss-gated, 
 
 ---
 
+## 🏷️ Participant Labelling Tool (`app/labeling.html`)
+
+The standalone labelling page runs entirely in the browser and does not require MQTT, a model
+server, or an internet connection. Each participant reviews 20 fixed industrial alerts, labels each
+one `NORMAL` or `FAULT`, and downloads a pseudonymous session in the
+`rail-human-telemetry-v1` JSON format plus a CSV mirror. The page records anchored deliberation,
+focused time, note edits, interruptions, queue depth, and the client-side RAIL score while keeping
+ground truth and admission decisions hidden from the participant.
+
+```powershell
+# From the repository root
+python -m http.server 8000 --directory app
+```
+
+Open `http://127.0.0.1:8000/labeling.html`, enter the assigned participant code and condition, and
+complete all 20 alerts. Give the downloaded JSON file to the researcher, place all participant JSON
+files in one directory, then run:
+
+```bash
+python -m experiments.human_study path/to/session-files \
+    --output-dir publication_outputs/human_study
+```
+
+The tool saves an unfinished session in browser local storage so an accidental reload can be
+resumed. Selecting **Prepare another participant** after exporting clears the saved session.
+
+---
+
+## 🧑‍🔬 Real-User Experiments (`real tests/`)
+
+Alongside the simulated benchmark, the repository ships a **real-operator pilot**: five volunteer
+participants each reviewed 20 streaming alerts in the RAIL Console under an **overload** condition
+(queue depth climbing from 1 to 49 over the session; interruptions recorded on 30 % of trials),
+labelling each alert NORMAL or FAULT with ground truth known by construction. The console recorded
+per-trial telemetry and scored every decision live with its untuned defaults
+(τ_min = 0.8, τ_max = 6.0, k = 1.2, θ = 0.5).
+
+Each session is stored as a `rail-human-telemetry-v1` JSON file (plus a CSV mirror) in
+`real tests/`, one per participant, containing the session parameters and per-trial records:
+anchored deliberation Δ, focus time, edits, features inspected, interruptions, queue depth, β, V,
+the admission decision, the operator's label, the model's flag, the ground truth, and the offline
+contamination flag. Sessions are pseudonymous and contain interaction telemetry only.
+
+```bash
+python -m experiments.human_study "real tests" --output-dir publication_outputs/human_study
+```
+
+The analysis script re-computes every score from the raw telemetry through `experiments/rail_core.py`
+and cross-checks it against what the console recorded (an end-to-end audit of the client-side gate),
+then emits per-trial and per-participant CSVs, a JSON summary, the LaTeX table used in the paper,
+and a two-panel figure.
+
+**Headline numbers (pooled, n = 100 decisions):**
+
+| Metric | Value |
+|:---|:---|
+| Recomputed V vs. recorded V | agree to < 2×10⁻⁴; all 100 admission decisions match |
+| Operator accuracy | 97 % (base contamination π = 0.03) |
+| Admitted | 49/100 (clean retention ρ ≈ 0.495) |
+| Contaminated corrections withheld | 2 of 3 (false-admission rate α ≈ 0.33) |
+| Admitted-stream contamination | 2.0 % vs. 3.0 % base — matches the contract's plug-in bound |
+| Vigilance on contaminated vs. clean trials | mean V 0.36 vs. 0.48 (rank AUC 0.63; exact permutation p = 0.25) |
+
+With five participants and three contaminated events this is a **feasibility pilot**, not a powered
+validation — the paper reports it as such. Two practical observations: real overload showed up
+almost entirely on the *slow* side (every withheld correction exceeded τ_max + β, consistent with
+queueing delay rather than hasty rubber-stamping), and the population's median Δ (6.5 s) sits at the
+default τ_max, i.e. the untuned window is conservative and a burn-in-calibrated deployment would
+retain more clean yield.
+
+---
+
 ## 📦 Publication Artifact
 
 Publication-readiness files are included for reproducibility and review:
@@ -434,6 +523,7 @@ Publication-readiness files are included for reproducibility and review:
 | `CITATION.cff` | Citation metadata for repository archiving |
 | `schemas/` | JSON Schemas for export, recalibration, and activity-report payloads |
 | `experiments/activity_report.py` | Aggregates exported browser activity reports into session and condition summaries |
+| `experiments/human_study.py` | Audits and summarises the real-operator pilot telemetry in `real tests/` |
 | `.github/workflows/ci.yml` | CI smoke test for the shared RAIL scoring contract |
 
 Generated outputs and downloaded datasets are ignored by Git. For submission, archive `publication_outputs/` and deposit the code/results bundle in a persistent repository.
@@ -456,7 +546,9 @@ rail/
 │   ├── regime_sweep.py       #   ↳ 24-cell phase-diagram sweep
 │   ├── rail_stats.py         #   ↳ Friedman/Nemenyi/Wilcoxon + BCa/Cliff's δ
 │   ├── theory.py             #   ↳ closed-form contract/risk grid
+│   ├── human_study.py        #   ↳ real-operator pilot analysis (audit + table + figure)
 │   └── make_main_figures.py  #   ↳ main-text figure generator
+├── real tests/               # Real-operator pilot telemetry (rail-human-telemetry-v1)
 ├── tests/                    # Test suite (pytest)
 ├── schemas/                  # JSON payload contracts
 ├── paper/                    # LaTeX manuscript and figures

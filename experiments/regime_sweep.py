@@ -292,6 +292,9 @@ def _run_one_seed(
     # Reinstantiate integrated policies per seed -- they hold mutable state
     # (sliding-window quantiles, age counters) that must NOT carry over.
     integ_policies = list(integrated_factory(seed))
+    for p in integ_policies:
+        if hasattr(p, "calibrate_from_validation"):
+            p.calibrate_from_validation(bundle.validation_events)
     integ_rows = run_all_integrated_policies(
         dataset_name=cell.key(),
         base_model=model,

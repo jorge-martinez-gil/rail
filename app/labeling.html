@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Participant-facing RAIL alert labelling study.">
+  <title>RAIL Alert Labelling Study</title>
+  <style>
+    :root {
+      --ink: #172126;
+      --muted: #617078;
+      --paper: #f4f1ea;
+      --panel: #fffdf8;
+      --line: #d8d4ca;
+      --teal: #0d6b65;
+      --teal-dark: #084c48;
+      --teal-soft: #dceeea;
+      --orange: #d26135;
+      --orange-soft: #f8e5da;
+      --red: #ad3c32;
+      --shadow: 0 24px 64px rgba(28, 38, 41, 0.12);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { min-height: 100%; background: var(--paper); }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 4%, rgba(13, 107, 101, 0.09), transparent 30rem),
+        linear-gradient(135deg, transparent 0 49.5%, rgba(23, 33, 38, 0.035) 49.5% 50%, transparent 50% 100%),
+        var(--paper);
+      background-size: auto, 38px 38px, auto;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input, select, textarea { font: inherit; }
+
+    button { touch-action: manipulation; }
+
+    .app-shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 48px; }
+
+    .masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 13px; }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: var(--teal);
+      box-shadow: 0 10px 22px rgba(13, 107, 101, 0.22);
+      font-weight: 800;
+      letter-spacing: -0.08em;
+    }
+
+    .brand-copy strong { display: block; font-size: 15px; letter-spacing: 0.04em; }
+    .brand-copy span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    .privacy-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255, 253, 248, 0.78);
+      font-size: 12px;
+    }
+
+    .privacy-pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--teal);
+      box-shadow: 0 0 0 4px var(--teal-soft);
+    }
+
+    .screen[hidden] { display: none !important; }
+
+    .setup-grid {
+      min-height: min(710px, calc(100vh - 128px));
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .intro {
+      padding: clamp(36px, 6vw, 76px);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: var(--teal-dark);
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .intro::after {
+      content: "";
+      position: absolute;
+      width: 360px;
+      height: 360px;
+      right: -160px;
+      bottom: -130px;
+      border: 70px solid rgba(255, 255, 255, 0.07);
+      border-radius: 50%;
+    }
+
+    .eyebrow {
+      margin: 0 0 20px;
+      color: #b9ddd7;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    h1 {
+      max-width: 620px;
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(42px, 6vw, 72px);
+      font-weight: 500;
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+    }
+
+    .intro-text { max-width: 540px; margin: 28px 0 0; color: #d7eae6; font-size: 17px; line-height: 1.7; }
+
+    .study-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 48px; position: relative; z-index: 1; }
+    .fact { border-top: 1px solid rgba(255,255,255,0.25); padding-top: 13px; }
+    .fact strong { display: block; font-size: 20px; }
+    .fact span { display: block; margin-top: 4px; color: #b9d1cd; font-size: 12px; }
+
+    .setup-panel { padding: clamp(32px, 5vw, 64px); display: flex; flex-direction: column; justify-content: center; }
+    .setup-panel h2 { margin: 0; font-size: 27px; letter-spacing: -0.02em; }
+    .setup-panel > p { margin: 10px 0 30px; color: var(--muted); line-height: 1.6; }
+
+    .field { margin-bottom: 18px; }
+    .field label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 750; }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: white;
+      color: var(--ink);
+      padding: 13px 14px;
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .field textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-soft); }
+    .field-help { display: block; margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 10px;
+      align-items: start;
+      margin: 6px 0 22px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .check-row input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--teal); }
+
+    .primary, .secondary, .label-btn, .text-btn {
+      border: 0;
+      border-radius: 11px;
+      cursor: pointer;
+      font-weight: 780;
+      transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
+
+    .primary { width: 100%; padding: 14px 18px; background: var(--teal); color: white; box-shadow: 0 10px 20px rgba(13,107,101,0.18); }
+    .primary:hover { background: var(--teal-dark); transform: translateY(-1px); }
+    .primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .secondary { padding: 12px 16px; background: white; border: 1px solid var(--line); color: var(--ink); }
+    .secondary:hover { border-color: var(--teal); }
+    .text-btn { padding: 8px 0; color: var(--teal); background: transparent; }
+
+    .resume-card { display: none; margin: 0 0 24px; padding: 16px; border: 1px solid #b8d7d2; border-radius: 12px; background: var(--teal-soft); }
+    .resume-card.visible { display: block; }
+    .resume-card strong { display: block; font-size: 14px; }
+    .resume-card p { margin: 5px 0 12px; color: #385b57; font-size: 12px; }
+    .resume-actions { display: flex; align-items: center; gap: 14px; }
+    .resume-actions .primary { width: auto; padding: 10px 14px; }
+
+    .study-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    .study-header h2 { margin: 0 0 6px; font-size: clamp(26px, 4vw, 40px); font-family: Georgia, "Times New Roman", serif; font-weight: 500; }
+    .study-header p { margin: 0; color: var(--muted); }
+
+    .progress-copy { text-align: right; }
+    .progress-copy strong { display: block; font-size: 24px; }
+    .progress-copy span { color: var(--muted); font-size: 12px; }
+
+    .progress-track { grid-column: 1 / -1; height: 6px; border-radius: 99px; overflow: hidden; background: #dedbd2; }
+    .progress-fill { height: 100%; width: 0; border-radius: inherit; background: var(--teal); transition: width 280ms ease; }
+
+    .work-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; }
+    .alert-card, .context-card { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); box-shadow: 0 14px 36px rgba(28,38,41,0.08); }
+    .alert-card { padding: clamp(24px, 4vw, 42px); }
+
+    .alert-top { display: flex; justify-content: space-between; gap: 18px; align-items: start; margin-bottom: 28px; }
+    .alert-id { margin: 0 0 5px; color: var(--muted); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 800; }
+    .alert-card h3 { margin: 0; font-size: clamp(25px, 4vw, 38px); letter-spacing: -0.035em; }
+    .asset-meta { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+
+    .model-badge { flex: 0 0 auto; padding: 10px 12px; border-radius: 10px; background: #ece9e1; font-size: 12px; text-align: right; }
+    .model-badge span { display: block; color: var(--muted); margin-bottom: 2px; }
+    .model-badge strong { font-size: 14px; }
+    .model-badge.fault { color: #8d321f; background: var(--orange-soft); }
+
+    .instruction-strip { margin: 0 0 24px; padding: 13px 15px; border-left: 4px solid var(--teal); background: #eef3f0; color: #42524f; font-size: 13px; line-height: 1.55; }
+
+    .readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+    .reading { min-height: 94px; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+    .reading-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .reading-name { color: var(--muted); font-size: 12px; }
+    .reading-state { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); }
+    .reading.out .reading-state { background: var(--orange); box-shadow: 0 0 0 4px var(--orange-soft); }
+    .reading-value { display: block; margin-top: 8px; font-size: 23px; font-weight: 780; letter-spacing: -0.025em; }
+    .reading-range { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .reading.out { border-color: #e3bba9; background: #fffaf7; }
+    .reading.out .reading-value { color: #9b3f29; }
+
+    .decision-zone { margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--line); }
+    .decision-zone h4 { margin: 0 0 5px; font-size: 18px; }
+    .decision-zone p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+    .decision-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .label-btn { min-height: 62px; padding: 12px; border: 2px solid transparent; font-size: 15px; }
+    .label-btn.normal { background: var(--teal-soft); color: var(--teal-dark); }
+    .label-btn.normal:hover, .label-btn.normal:focus-visible { border-color: var(--teal); }
+    .label-btn.fault { background: var(--orange-soft); color: #87351e; }
+    .label-btn.fault:hover, .label-btn.fault:focus-visible { border-color: var(--orange); }
+    .label-btn:active { transform: scale(0.99); }
+
+    .context-card { padding: 22px; position: sticky; top: 20px; }
+    .queue-block { padding: 18px; border-radius: 14px; color: white; background: var(--ink); }
+    .queue-label { color: #bdc7cb; font-size: 11px; text-transform: uppercase; letter-spacing: 0.13em; font-weight: 800; }
+    .queue-value { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+    .queue-value strong { font-size: 42px; line-height: 1; }
+    .queue-value span { color: #cbd2d5; font-size: 12px; }
+    .queue-meter { height: 5px; margin-top: 16px; border-radius: 99px; background: rgba(255,255,255,0.14); overflow: hidden; }
+    .queue-meter span { display: block; height: 100%; background: #e4a078; transition: width 280ms ease; }
+
+    .context-section { margin-top: 20px; padding-top: 19px; border-top: 1px solid var(--line); }
+    .context-section:first-of-type { border-top: 0; }
+    .context-section h4 { margin: 0 0 8px; font-size: 13px; }
+    .context-section p, .context-section li { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .context-section ul { margin: 8px 0 0; padding-left: 18px; }
+
+    .session-note { margin: 0; }
+
+    .interrupt-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(23,33,38,0.62);
+      backdrop-filter: blur(4px);
+    }
+
+    .interrupt-overlay[hidden] { display: none; }
+    .interrupt-dialog { width: min(430px, 100%); padding: 28px; border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); }
+    .interrupt-kicker { color: var(--orange); text-transform: uppercase; letter-spacing: 0.16em; font-size: 11px; font-weight: 850; }
+    .interrupt-dialog h3 { margin: 8px 0 8px; font-size: 25px; }
+    .interrupt-dialog p { margin: 0 0 20px; color: var(--muted); line-height: 1.6; }
+
+    .complete-card { width: min(760px, 100%); margin: 7vh auto 0; padding: clamp(32px, 6vw, 64px); text-align: center; border: 1px solid var(--line); border-radius: 24px; background: var(--panel); box-shadow: var(--shadow); }
+    .complete-mark { width: 62px; height: 62px; margin: 0 auto 20px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--teal); font-size: 28px; }
+    .complete-card h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(34px, 6vw, 52px); font-weight: 500; }
+    .complete-card > p { max-width: 570px; margin: 14px auto 28px; color: var(--muted); line-height: 1.65; }
+    .export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 24px auto 0; max-width: 520px; }
+    .export-actions .primary { grid-column: 1 / -1; }
+    .session-summary { display: flex; justify-content: center; gap: 36px; margin: 28px 0; }
+    .session-summary strong { display: block; font-size: 24px; }
+    .session-summary span { color: var(--muted); font-size: 12px; }
+    .researcher-note { margin-top: 24px; padding: 13px; border-radius: 10px; background: #eeece5; color: var(--muted); font-size: 12px; }
+
+    .error { min-height: 20px; margin: 9px 0 0; color: var(--red); font-size: 12px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @media (max-width: 900px) {
+      .setup-grid { grid-template-columns: 1fr; }
+      .intro { min-height: 440px; }
+      .work-grid { grid-template-columns: 1fr; }
+      .context-card { position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .queue-block { grid-row: 1 / span 2; }
+      .context-section { margin: 0; padding: 10px 0 0; border-top: 0; }
+    }
+
+    @media (max-width: 620px) {
+      .app-shell { width: min(100% - 20px, 1180px); padding-top: 16px; }
+      .masthead { margin-bottom: 16px; }
+      .privacy-pill { display: none; }
+      .intro { min-height: 390px; padding: 34px 28px; }
+      .study-facts { grid-template-columns: 1fr; gap: 8px; }
+      .fact { display: flex; gap: 8px; align-items: baseline; }
+      .setup-panel { padding: 30px 24px; }
+      .study-header { align-items: start; }
+      .progress-copy strong { font-size: 18px; }
+      .alert-top { display: block; }
+      .model-badge { display: inline-block; margin-top: 15px; text-align: left; }
+      .readings, .decision-buttons, .export-actions { grid-template-columns: 1fr; }
+      .export-actions .primary { grid-column: auto; }
+      .context-card { display: block; }
+      .context-section { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+      .session-summary { gap: 18px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="masthead">
+      <div class="brand" aria-label="RAIL Research">
+        <div class="brand-mark" aria-hidden="true">R</div>
+        <div class="brand-copy"><strong>RAIL RESEARCH</strong><span>Human-in-the-loop reliability</span></div>
+      </div>
+      <div class="privacy-pill">Local, pseudonymous study</div>
+    </header>
+
+    <section id="setupScreen" class="screen" aria-labelledby="setupTitle">
+      <div class="setup-grid">
+        <div class="intro">
+          <div>
+            <p class="eyebrow">Operator study</p>
+            <h1 id="setupTitle">Classify live industrial alerts.</h1>
+            <p class="intro-text">Review sensor readings and decide whether each alert represents normal operation or a fault. Work carefully, as you would during a real monitoring shift.</p>
+          </div>
+          <div class="study-facts" aria-label="Study details">
+            <div class="fact"><strong>20</strong><span>alerts</span></div>
+            <div class="fact"><strong>5–8 min</strong><span>typical duration</span></div>
+            <div class="fact"><strong>Local</strong><span>data storage</span></div>
+          </div>
+        </div>
+
+        <form id="setupForm" class="setup-panel" novalidate>
+          <div id="resumeCard" class="resume-card" role="status">
+            <strong>Unfinished session found</strong>
+            <p id="resumeCopy">Continue where you stopped.</p>
+            <div class="resume-actions">
+              <button id="resumeButton" type="button" class="primary">Resume session</button>
+              <button id="discardButton" type="button" class="text-btn">Discard</button>
+            </div>
+          </div>
+
+          <h2>Before you begin</h2>
+          <p>Use only the study code provided by the researcher. Do not enter your name or email address.</p>
+
+          <div class="field">
+            <label for="participantInput">Participant code</label>
+            <input id="participantInput" name="participant" type="text" maxlength="40" autocomplete="off" placeholder="e.g. P014" required>
+            <span class="field-help">A pseudonymous code is stored in the export.</span>
+          </div>
+
+          <div class="field">
+            <label for="conditionSelect">Study condition</label>
+            <select id="conditionSelect" name="condition">
+              <option value="overload">Overload</option>
+              <option value="baseline">Baseline</option>
+            </select>
+            <span class="field-help">The researcher will tell you which condition to select.</span>
+          </div>
+
+          <label class="check-row" for="consentInput">
+            <input id="consentInput" type="checkbox" required>
+            <span>I agree to take part and understand that interaction timing, focus changes, decisions, and optional note length will be recorded locally.</span>
+          </label>
+
+          <button id="startButton" type="submit" class="primary">Start labelling</button>
+          <p id="setupError" class="error" role="alert"></p>
+        </form>
+      </div>
+    </section>
+
+    <section id="studyScreen" class="screen" hidden aria-labelledby="studyTitle">
+      <div class="study-header">
+        <div>
+          <h2 id="studyTitle">Review the current alert</h2>
+          <p>Compare every reading with its reference range, then make one decision.</p>
+        </div>
+        <div class="progress-copy" aria-live="polite"><strong id="progressCount">1 / 20</strong><span>alerts completed</span></div>
+        <div class="progress-track" aria-hidden="true"><div id="progressFill" class="progress-fill"></div></div>
+      </div>
+
+      <div class="work-grid">
+        <article class="alert-card" id="alertCard">
+          <div class="alert-top">
+            <div>
+              <p id="alertId" class="alert-id">ALT-1000</p>
+              <h3 id="alertTitle">Cooling pump A</h3>
+              <p id="assetMeta" class="asset-meta">Process line 2 · Sensor snapshot</p>
+            </div>
+            <div id="modelBadge" class="model-badge"><span>Model flag</span><strong id="modelFlag">NORMAL</strong></div>
+          </div>
+
+          <p class="instruction-strip">A reading outside its reference range may indicate a fault. Use your own judgement—the model flag can be wrong.</p>
+          <div id="readings" class="readings" aria-label="Sensor readings"></div>
+
+          <div class="decision-zone">
+            <h4>How would you label this alert?</h4>
+            <p>Your decision is final once selected.</p>
+            <div class="decision-buttons">
+              <button type="button" class="label-btn normal" data-label="NORMAL">Label NORMAL</button>
+              <button type="button" class="label-btn fault" data-label="FAULT">Label FAULT</button>
+            </div>
+          </div>
+        </article>
+
+        <aside class="context-card" aria-label="Study context">
+          <div class="queue-block">
+            <div class="queue-label">Alerts waiting</div>
+            <div class="queue-value"><strong id="queueDepth">1</strong><span>in queue</span></div>
+            <div class="queue-meter"><span id="queueMeter"></span></div>
+          </div>
+
+          <div class="context-section">
+            <h4>Decision guide</h4>
+            <ul>
+              <li>Check all displayed readings.</li>
+              <li>Compare values with their ranges.</li>
+              <li>Do not automatically copy the model.</li>
+            </ul>
+          </div>
+
+          <div class="context-section field session-note">
+            <label for="noteInput">Optional operator note</label>
+            <textarea id="noteInput" maxlength="500" placeholder="Add a short observation…"></textarea>
+            <span class="field-help">Only note length is exported, not its text.</span>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="completeScreen" class="screen" hidden aria-labelledby="completeTitle">
+      <div class="complete-card">
+        <div class="complete-mark" aria-hidden="true">✓</div>
+        <h2 id="completeTitle">Labelling complete</h2>
+        <p>Thank you. Your results remain on this device until you download them. Give the JSON file to the researcher; the CSV is a readable mirror.</p>
+        <div class="session-summary" aria-label="Session summary">
+          <div><strong id="completeTrials">20</strong><span>alerts labelled</span></div>
+          <div><strong id="completeDuration">—</strong><span>session time</span></div>
+        </div>
+        <div class="export-actions">
+          <button id="downloadBothButton" type="button" class="primary">Download JSON + CSV</button>
+          <button id="downloadJsonButton" type="button" class="secondary">Download JSON</button>
+          <button id="downloadCsvButton" type="button" class="secondary">Download CSV</button>
+        </div>
+        <div class="researcher-note">Researcher: the JSON export uses <strong>rail-human-telemetry-v1</strong> and can be passed directly to <strong>experiments.human_study</strong>.</div>
+        <button id="newSessionButton" type="button" class="text-btn" style="margin-top:18px;">Prepare another participant</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="interruptOverlay" class="interrupt-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="interruptTitle">
+    <div class="interrupt-dialog">
+      <span class="interrupt-kicker">Incoming workload</span>
+      <h3 id="interruptTitle">New alert added to the queue</h3>
+      <p>Another monitoring event has arrived while you are reviewing the current alert.</p>
+      <button id="acknowledgeButton" type="button" class="primary">Acknowledge and continue</button>
+    </div>
+  </div>
+
+  <div id="liveRegion" class="sr-only" aria-live="polite"></div>
+
+  <script>
+    "use strict";
+
+    const STORAGE_KEY = "rail-labeling-session-v1";
+    const TOTAL_TRIALS = 20;
+    const RAIL_DEFAULTS = Object.freeze({
+      tauMin: 0.8,
+      tauMax: 6.0,
+      k: 1.2,
+      wDelta: 1.0,
+      theta: 0.5,
+      wf: 0.05,
+      we: 0.15,
+      ws: 0.02
+    });
+
+    const ALERT_SPECS = Object.freeze([
+      ["Cooling pump A", "Process line 2", "NORMAL", "NORMAL", 8],
+      ["Hydraulic press 4", "Forming cell", "FAULT", "NORMAL", 7],
+      ["Air compressor C", "Utilities bay", "FAULT", "NORMAL", 6],
+      ["Conveyor drive 7", "Packaging line", "NORMAL", "FAULT", 5],
+      ["Boiler feed pump", "Steam plant", "FAULT", "FAULT", 6],
+      ["Mixing vessel B", "Blending hall", "NORMAL", "NORMAL", 4],
+      ["CNC spindle 12", "Machining cell", "FAULT", "FAULT", 8],
+      ["Chiller loop 3", "Cooling plant", "FAULT", "FAULT", 8],
+      ["Transfer pump F", "Tank farm", "FAULT", "NORMAL", 4],
+      ["Extraction fan 2", "Assembly hall", "NORMAL", "FAULT", 6],
+      ["Dosing unit 9", "Process line 1", "NORMAL", "NORMAL", 6],
+      ["Steam valve V14", "Utilities bay", "FAULT", "FAULT", 6],
+      ["Robot axis 3", "Welding cell", "NORMAL", "FAULT", 4],
+      ["Cooling tower fan", "North services", "NORMAL", "NORMAL", 4],
+      ["Vacuum pump D", "Coating line", "NORMAL", "NORMAL", 5],
+      ["Kiln exhaust motor", "Thermal zone", "FAULT", "FAULT", 5],
+      ["Filtration skid 5", "Water treatment", "FAULT", "FAULT", 4],
+      ["Recirculation pump", "Process line 3", "NORMAL", "FAULT", 6],
+      ["Palletizer servo", "Dispatch cell", "NORMAL", "NORMAL", 6],
+      ["Heat exchanger 8", "Recovery loop", "NORMAL", "FAULT", 8]
+    ]);
+
+    const SENSOR_DEFS = Object.freeze([
+      { name: "Temperature", unit: "°C", low: 18, high: 78, decimals: 1 },
+      { name: "Pressure", unit: "bar", low: 3.5, high: 6.5, decimals: 2 },
+      { name: "Vibration", unit: "mm/s", low: 0.2, high: 4.5, decimals: 2 },
+      { name: "Supply voltage", unit: "V", low: 220, high: 240, decimals: 1 },
+      { name: "Flow rate", unit: "L/min", low: 32, high: 55, decimals: 1 },
+      { name: "Humidity", unit: "%", low: 30, high: 70, decimals: 1 },
+      { name: "Motor speed", unit: "rpm", low: 1400, high: 1800, decimals: 0 },
+      { name: "Current draw", unit: "A", low: 8, high: 16, decimals: 1 }
+    ]);
+
+    const SIMULATED_INTERRUPTION_TRIALS = new Set([2, 9, 11, 12, 16, 17]);
+
+    const setupScreen = document.getElementById("setupScreen");
+    const studyScreen = document.getElementById("studyScreen");
+    const completeScreen = document.getElementById("completeScreen");
+    const setupForm = document.getElementById("setupForm");
+    const participantInput = document.getElementById("participantInput");
+    const conditionSelect = document.getElementById("conditionSelect");
+    const consentInput = document.getElementById("consentInput");
+    const setupError = document.getElementById("setupError");
+    const resumeCard = document.getElementById("resumeCard");
+    const resumeCopy = document.getElementById("resumeCopy");
+    const resumeButton = document.getElementById("resumeButton");
+    const discardButton = document.getElementById("discardButton");
+    const progressCount = document.getElementById("progressCount");
+    const progressFill = document.getElementById("progressFill");
+    const alertId = document.getElementById("alertId");
+    const alertTitle = document.getElementById("alertTitle");
+    const assetMeta = document.getElementById("assetMeta");
+    const modelBadge = document.getElementById("modelBadge");
+    const modelFlag = document.getElementById("modelFlag");
+    const readings = document.getElementById("readings");
+    const queueDepth = document.getElementById("queueDepth");
+    const queueMeter = document.getElementById("queueMeter");
+    const noteInput = document.getElementById("noteInput");
+    const interruptOverlay = document.getElementById("interruptOverlay");
+    const acknowledgeButton = document.getElementById("acknowledgeButton");
+    const liveRegion = document.getElementById("liveRegion");
+
+    let session = null;
+    let currentTrial = null;
+    let interruptionTimer = null;
+
+    function nowMs() {
+      return Date.now();
+    }
+
+    function round(value, digits) {
+      const scale = 10 ** digits;
+      return Math.round((value + Number.EPSILON) * scale) / scale;
+    }
+
+    function sigmoid(value) {
+      if (value >= 0) {
+        const z = Math.exp(-value);
+        return 1 / (1 + z);
+      }
+      const z = Math.exp(value);
+      return z / (1 + z);
+    }
+
+    function admissionDiagnostics(deltaSec, featureCount, editCount, focusSec) {
+      const p = RAIL_DEFAULTS;
+      const beta = p.wf * featureCount + p.we * editCount + p.ws * focusSec;
+      const zFast = p.k * (p.wDelta * deltaSec - (p.tauMin + beta));
+      const zSlow = p.k * ((p.tauMax + beta) - p.wDelta * deltaSec);
+      const score = sigmoid(zFast) * sigmoid(zSlow);
+      return { beta, score, admitted: score >= p.theta };
+    }
+
+    function queueFor(index, condition) {
+      if (condition !== "overload") return 1;
+      return 1 + Math.round((index * 48) / (TOTAL_TRIALS - 1));
+    }
+
+    function buildFeatures(index, truth, count) {
+      return SENSOR_DEFS.slice(0, count).map((sensor, sensorIndex) => {
+        const span = sensor.high - sensor.low;
+        const fraction = 0.25 + (((index + 3) * (sensorIndex + 5) * 17) % 50) / 100;
+        let value = sensor.low + span * fraction;
+        let out = false;
+        if (truth === "FAULT" && sensorIndex === (index * 3 + 1) % count) {
+          value = sensor.high + span * (0.14 + (index % 3) * 0.08);
+          out = true;
+        }
+        return {
+          name: sensor.name,
+          unit: sensor.unit,
+          range: `${sensor.low.toFixed(sensor.decimals)}–${sensor.high.toFixed(sensor.decimals)} ${sensor.unit}`,
+          value: value.toFixed(sensor.decimals),
+          out
+        };
+      });
+    }
+
+    function alertFor(index) {
+      const [title, area, truth, model, featureCount] = ALERT_SPECS[index];
+      return {
+        alertId: `ALT-${1000 + index}`,
+        title,
+        area,
+        truth,
+        model,
+        features: buildFeatures(index, truth, featureCount)
+      };
+    }
+
+    function showScreen(target) {
+      [setupScreen, studyScreen, completeScreen].forEach(screen => {
+        screen.hidden = screen !== target;
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function safeParticipant(value) {
+      return value.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40);
+    }
+
+    function saveSession() {
+      if (!session) return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    }
+
+    function loadStoredSession() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (!stored || stored.schema !== "rail-human-telemetry-v1" || !Array.isArray(stored.records)) return null;
+        if (!stored.participant || !stored.condition || stored.records.length > TOTAL_TRIALS) return null;
+        return stored;
+      } catch {
+        return null;
+      }
+    }
+
+    function refreshResumeCard() {
+      const stored = loadStoredSession();
+      if (!stored || stored.complete) {
+        resumeCard.classList.remove("visible");
+        return;
+      }
+      resumeCopy.textContent = `${stored.participant} · ${stored.records.length} of ${TOTAL_TRIALS} alerts completed`;
+      resumeCard.classList.add("visible");
+    }
+
+    function beginSession(participant, condition) {
+      session = {
+        schema: "rail-human-telemetry-v1",
+        participant,
+        condition,
+        started: new Date().toISOString(),
+        rail_defaults: { ...RAIL_DEFAULTS },
+        records: [],
+        complete: false
+      };
+      saveSession();
+      showScreen(studyScreen);
+      renderTrial();
+    }
+
+    function resumeSession() {
+      session = loadStoredSession();
+      if (!session) {
+        refreshResumeCard();
+        return;
+      }
+      if (session.records.length >= TOTAL_TRIALS) {
+        finishSession();
+        return;
+      }
+      showScreen(studyScreen);
+      renderTrial();
+    }
+
+    function startFocusTracking() {
+      currentTrial.focusStartedMs = document.hidden ? null : nowMs();
+      currentTrial.focusAccumulatedMs = 0;
+    }
+
+    function stopFocusSegment(countInterruption) {
+      if (!currentTrial) return;
+      if (currentTrial.focusStartedMs !== null) {
+        currentTrial.focusAccumulatedMs += Math.max(0, nowMs() - currentTrial.focusStartedMs);
+        currentTrial.focusStartedMs = null;
+      }
+      if (countInterruption && !interruptOverlay.hidden) return;
+      if (countInterruption && !currentTrial.focusAway) {
+        currentTrial.interruptions += 1;
+        currentTrial.focusAway = true;
+      }
+    }
+
+    function resumeFocusSegment() {
+      if (currentTrial && currentTrial.focusStartedMs === null && !document.hidden) {
+        currentTrial.focusStartedMs = nowMs();
+        currentTrial.focusAway = false;
+      }
+    }
+
+    function renderTrial() {
+      clearTimeout(interruptionTimer);
+      interruptOverlay.hidden = true;
+      const index = session.records.length;
+      const alert = alertFor(index);
+      const queue = queueFor(index, session.condition);
+      const renderedAt = nowMs();
+      currentTrial = {
+        index,
+        alert,
+        queue,
+        renderedAt,
+        anchorAt: null,
+        focusStartedMs: null,
+        focusAccumulatedMs: 0,
+        edits: 0,
+        interruptions: 0,
+        focusAway: document.hidden,
+        decisionLocked: false
+      };
+
+      progressCount.textContent = `${index + 1} / ${TOTAL_TRIALS}`;
+      progressFill.style.width = `${(index / TOTAL_TRIALS) * 100}%`;
+      alertId.textContent = alert.alertId;
+      alertTitle.textContent = alert.title;
+      assetMeta.textContent = `${alert.area} · Sensor snapshot`;
+      modelFlag.textContent = alert.model;
+      modelBadge.classList.toggle("fault", alert.model === "FAULT");
+      queueDepth.textContent = String(queue);
+      queueMeter.style.width = `${Math.max(4, (queue / 49) * 100)}%`;
+      noteInput.value = "";
+      readings.replaceChildren(...alert.features.map(feature => {
+        const element = document.createElement("div");
+        element.className = `reading${feature.out ? " out" : ""}`;
+        element.innerHTML = `
+          <div class="reading-top">
+            <span class="reading-name"></span>
+            <span class="reading-state" aria-hidden="true"></span>
+          </div>
+          <strong class="reading-value"></strong>
+          <span class="reading-range"></span>`;
+        element.querySelector(".reading-name").textContent = feature.name;
+        element.querySelector(".reading-value").textContent = `${feature.value} ${feature.unit}`;
+        element.querySelector(".reading-range").textContent = `Reference ${feature.range}`;
+        return element;
+      }));
+
+      startFocusTracking();
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (currentTrial && currentTrial.index === index && currentTrial.anchorAt === null) currentTrial.anchorAt = nowMs();
+        }, 120);
+      });
+
+      if (session.condition === "overload" && SIMULATED_INTERRUPTION_TRIALS.has(index + 1)) {
+        interruptionTimer = setTimeout(() => showInterruption(index), 1350 + (index % 3) * 400);
+      }
+
+      liveRegion.textContent = `Alert ${index + 1} of ${TOTAL_TRIALS}: ${alert.title}`;
+      document.querySelector(".label-btn.normal").focus({ preventScroll: true });
+    }
+
+    function showInterruption(expectedIndex) {
+      if (!currentTrial || currentTrial.index !== expectedIndex || currentTrial.decisionLocked) return;
+      currentTrial.interruptions += 1;
+      interruptOverlay.hidden = false;
+      acknowledgeButton.focus();
+    }
+
+    function recordDecision(operatorLabel) {
+      if (!currentTrial || currentTrial.decisionLocked || !interruptOverlay.hidden) return;
+      currentTrial.decisionLocked = true;
+      clearTimeout(interruptionTimer);
+      const decidedAt = nowMs();
+      stopFocusSegment(false);
+      const anchorAt = currentTrial.anchorAt ?? currentTrial.renderedAt;
+      const deltaSec = Math.max(0, (decidedAt - anchorAt) / 1000);
+      const focusSec = Math.max(0, currentTrial.focusAccumulatedMs / 1000);
+      const diagnostics = admissionDiagnostics(deltaSec, currentTrial.alert.features.length, currentTrial.edits, focusSec);
+      const contaminated = operatorLabel !== currentTrial.alert.truth;
+
+      session.records.push({
+        trial: currentTrial.index + 1,
+        alertId: currentTrial.alert.alertId,
+        condition: session.condition,
+        t_render_ms: round(currentTrial.renderedAt, 1),
+        t_anchor_ms: round(anchorAt, 1),
+        t_decision_ms: round(decidedAt, 1),
+        delta_t_s: round(deltaSec, 3),
+        focus_s: round(focusSec, 3),
+        edits: currentTrial.edits,
+        n_features: currentTrial.alert.features.length,
+        interruptions: currentTrial.interruptions,
+        queue_depth: currentTrial.queue,
+        beta: round(diagnostics.beta, 3),
+        V: round(diagnostics.score, 4),
+        admitted: diagnostics.admitted ? 1 : 0,
+        operator_label: operatorLabel,
+        model_flag: currentTrial.alert.model,
+        truth: currentTrial.alert.truth,
+        contaminated: contaminated ? 1 : 0,
+        note_len: noteInput.value.length
+      });
+
+      saveSession();
+      currentTrial = null;
+      if (session.records.length >= TOTAL_TRIALS) finishSession();
+      else renderTrial();
+    }
+
+    function finishSession() {
+      clearTimeout(interruptionTimer);
+      interruptOverlay.hidden = true;
+      session.complete = true;
+      session.completed = session.completed || new Date().toISOString();
+      saveSession();
+      const first = session.records[0];
+      const last = session.records[session.records.length - 1];
+      const durationSec = first && last ? Math.max(0, (last.t_decision_ms - first.t_render_ms) / 1000) : 0;
+      document.getElementById("completeTrials").textContent = String(session.records.length);
+      document.getElementById("completeDuration").textContent = formatDuration(durationSec);
+      showScreen(completeScreen);
+    }
+
+    function formatDuration(seconds) {
+      const whole = Math.round(seconds);
+      const minutes = Math.floor(whole / 60);
+      const remainder = whole % 60;
+      return minutes ? `${minutes}m ${String(remainder).padStart(2, "0")}s` : `${remainder}s`;
+    }
+
+    function exportPayload() {
+      const { complete, completed, ...payload } = session;
+      return payload;
+    }
+
+    function csvEscape(value) {
+      const text = value === null || value === undefined ? "" : String(value);
+      return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    }
+
+    function sessionCsv() {
+      const headers = [
+        "trial", "alertId", "condition", "t_render_ms", "t_anchor_ms", "t_decision_ms",
+        "delta_t_s", "focus_s", "edits", "n_features", "interruptions", "queue_depth",
+        "beta", "V", "admitted", "operator_label", "model_flag", "truth", "contaminated", "note_len"
+      ];
+      const rows = session.records.map(record => headers.map(header => csvEscape(record[header])).join(","));
+      return `${headers.join(",")}\n${rows.join("\n")}\n`;
+    }
+
+    function baseFilename() {
+      return `rail_${safeParticipant(session.participant).toLowerCase()}_${session.condition}`;
+    }
+
+    function download(filename, content, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function downloadJson() {
+      download(`${baseFilename()}.json`, JSON.stringify(exportPayload(), null, 2), "application/json");
+    }
+
+    function downloadCsv() {
+      download(`${baseFilename()}.csv`, sessionCsv(), "text/csv;charset=utf-8");
+    }
+
+    setupForm.addEventListener("submit", event => {
+      event.preventDefault();
+      setupError.textContent = "";
+      const participant = safeParticipant(participantInput.value);
+      if (!participant) {
+        setupError.textContent = "Enter the pseudonymous participant code provided by the researcher.";
+        participantInput.focus();
+        return;
+      }
+      if (!consentInput.checked) {
+        setupError.textContent = "Consent is required before the study can begin.";
+        consentInput.focus();
+        return;
+      }
+      beginSession(participant, conditionSelect.value);
+    });
+
+    document.querySelectorAll(".label-btn").forEach(button => {
+      button.addEventListener("click", () => recordDecision(button.dataset.label));
+    });
+
+    noteInput.addEventListener("input", () => {
+      if (currentTrial) currentTrial.edits += 1;
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopFocusSegment(true);
+      else resumeFocusSegment();
+    });
+    window.addEventListener("blur", () => stopFocusSegment(true));
+    window.addEventListener("focus", resumeFocusSegment);
+
+    acknowledgeButton.addEventListener("click", () => {
+      interruptOverlay.hidden = true;
+      document.querySelector(".label-btn.normal").focus();
+    });
+
+    resumeButton.addEventListener("click", resumeSession);
+    discardButton.addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      refreshResumeCard();
+    });
+
+    document.getElementById("downloadJsonButton").addEventListener("click", downloadJson);
+    document.getElementById("downloadCsvButton").addEventListener("click", downloadCsv);
+    document.getElementById("downloadBothButton").addEventListener("click", () => {
+      downloadJson();
+      setTimeout(downloadCsv, 180);
+    });
+    document.getElementById("newSessionButton").addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      session = null;
+      currentTrial = null;
+      participantInput.value = "";
+      consentInput.checked = false;
+      refreshResumeCard();
+      showScreen(setupScreen);
+      participantInput.focus();
+    });
+
+    refreshResumeCard();
+  </script>
+</body>
+</html>

@@ -127,6 +127,9 @@ def _self_contained_one(
     ref = (always.contaminated_admissions, always.admitted_feedback)
     # Reinstantiate integrated policies per seed -- they hold mutable state.
     integ_policies = baselines_integrated.make_integrated_policies(seed=seed)
+    for p in integ_policies:
+        if hasattr(p, "calibrate_from_validation"):
+            p.calibrate_from_validation(bundle.validation_events)
     integ_rows = replay_integrated.run_all_integrated_policies(
         dataset_name=bundle.name,
         base_model=model,

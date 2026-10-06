@@ -360,11 +360,26 @@ INTEGRATED_POLICY_NAMES = (
     "gce_weight",
     "sce_weight",
     "itlm",
+    "rail_h",
+    "rail_h_cal",
 )
 
 
 def make_integrated_policies(seed: int = 0) -> list[StatefulPolicy]:
-    """Return a default list of integrated baselines for the headline tables."""
+    """Return a default list of integrated baselines for the headline tables.
+
+    Includes ``rail_h`` (the RAIL-H hybrid, :mod:`experiments.rail_hybrid`),
+    which fuses the vigilance gate with the same trimmed-loss rule ITLM uses;
+    its parameters are pinned to the rail_gated/ITLM defaults so the fusion
+    itself is the only degree of freedom being evaluated.
+    """
+    try:
+        from .rail_hybrid import RailHybridCalibratedPolicy, RailHybridPolicy
+    except ImportError:  # pragma: no cover - script-style import fallback
+        from rail_hybrid import (  # type: ignore[no-redef]
+            RailHybridCalibratedPolicy,
+            RailHybridPolicy,
+        )
 
     return [
         CoTeachingPolicy(forget_rate=0.3, ramp_steps=500, seed=seed),
@@ -374,6 +389,8 @@ def make_integrated_policies(seed: int = 0) -> list[StatefulPolicy]:
         GCEWeightPolicy(q=0.7),
         SCEWeightPolicy(alpha=0.1, beta=1.0),
         ITLMPolicy(alpha=0.7, warmup=100),
+        RailHybridPolicy(),
+        RailHybridCalibratedPolicy(),
     ]
 
 
@@ -433,7 +450,7 @@ def register_integrated_policies_in_rail_paper() -> None:
     def policy_weight(policy, score):  # type: ignore[no-redef]
         name = policy.name.lower()
         if name in registry:
-            raise RuntimeError("Integrated policies must be driven by replay_with_integrated.")
+              raise RuntimeError("Integrated policies must be driven by replay_with_integrated.")
         return original_weight(policy, score)
 
     rp._integrated_registry = registry  # type: ignore[attr-defined]
