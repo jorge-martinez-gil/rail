@@ -152,3 +152,43 @@ policies are reinstantiated per seed, which is a separate correctness fix
 (they hold sliding-window quantile state that must not leak across seeds).
 
 For the camera-ready, run `--tier headline` once and freeze the manifest.
+
+### APS-like timing gates at matched coverage
+
+```bash
+python -m experiments.aps_coverage --seeds 7 11 13 --coverage 0.50 0.60
+```
+
+Each seed uses 600 validation responses to set a score threshold for each
+slow-factor exponent (0, 0.2, 0.5, 1). Omitting `--coverage` uses the validation
+coverage of the fixed two-sided gate for that seed. Ties at the threshold are
+admitted. The 50,000 replay events measure achieved coverage, including coverage
+within each true class, and the error fraction among admitted responses. Each
+variant updates a clone of the same warm-start model in stream order and reports
+macro-F1 on the separate test split.
+
+The per-seed thresholds, fixed-gate reference and outcomes are in
+`publication_outputs/aps_coverage/results.csv`. The adjacent `results.paired.csv`
+reports mean differences from exponent 1 at the same validation target, with
+exploratory 95% paired t intervals across independent simulation seeds.
+
+### Error risk and decisions by timing zone
+
+```bash
+python -m experiments.zone_errors aps --seed 7 --output publication_outputs/aps_zones.csv
+python -m experiments.aps_error_risk --seeds 7 11 13 --error-cost 5 --reject-cost 1
+python -m experiments.zone_errors human --sessions "/path/to/session-exports" --output publication_outputs/human_zones.csv
+```
+
+The risk experiment fits gradient boosting with five-fold sigmoid calibration
+on APS-like validation telemetry. It admits feedback when estimated error risk
+times error cost is at most the cost of rejecting a response. The output
+`publication_outputs/aps_risk/zones.csv` compares the fixed band and cost-based
+decisions on held-out replay events. It includes coverage, observed errors,
+mean predicted risk, Brier score and cost by zone.
+
+For real data, the third command reads labelled `rail-human-telemetry-v1` JSON
+sessions and counts all responses, including withheld ones. It reports slow-zone
+errors by interruption status. The calibrated risk experiment currently takes
+APS-like input; validation on human operators requires fitting and calibrating
+on separate training sessions and evaluating on held-out operators.
